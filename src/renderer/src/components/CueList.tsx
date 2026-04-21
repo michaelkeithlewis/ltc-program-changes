@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../store'
 import type { Cue } from '../../../shared/types'
 import {
@@ -20,6 +20,15 @@ function newCue(timecode: string, channel: number): Cue {
   }
 }
 
+/** Hard cap on cues that may fire in a single effect tick — pure defensive
+ * measure so a malformed cue list can never flood the dLive bus. */
+const FIRE_CAP_PER_TICK = 16
+
+/** Save debounce: we keep zustand state in sync instantly (for a snappy
+ * UI), but defer the IPC + disk write so rapid keystrokes in a cue row
+ * don't queue N writes. */
+const SAVE_DEBOUNCE_MS = 250
+
 export function CueList() {
   const cues = useApp((s) => s.cues)
   const setCues = useApp((s) => s.setCues)
@@ -37,6 +46,14 @@ export function CueList() {
    * no-op ticks.
    */
   const prevTcMsRef = useRef<number | null>(null)
+
+  /**
+   * Debounced IPC write. The component always updates zustand immediately
+   * so the UI is snappy, but the actual disk write is coalesced. We also
+   * flush on unmount so no edit is ever lost.
+   */
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingSaveRef = useRef<Cue[] | null>(null)
 
   const fps = settings?.frameRate ?? 30
   const preRollMs = settings?.preRollMs ?? 0
@@ -63,12 +80,22 @@ export function CueList() {
     const prev = prevTcMsRef.current
 
     if (prev !== null) {
+      let fired = 0
       for (const { cue, ms } of sortedCues) {
         if (!cue.enabled) continue
         const trigger = ms - preRollMs
         if (prev < trigger && trigger <= nowMs) {
           fireCue(cue)
           setLastFired(cue.id)
+          if (++fired >= FIRE_CAP_PER_TICK) {
+            // Shouldn't happen in practice (N cues would all have to share
+            // the same frame), but prevents any conceivable runaway if the
+            // cue list is ever constructed pathologically.
+            console.warn(
+              `CueList: fire cap hit (${FIRE_CAP_PER_TICK}), skipping remaining cues for this tick`,
+            )
+            break
+          }
         }
       }
     }
@@ -81,11 +108,70 @@ export function CueList() {
     if (tcSource === 'none') prevTcMsRef.current = null
   }, [tcSource])
 
-  async function persist(next: Cue[]) {
+  const flushSave = useCallback(async () => {
+    if (!pendingSaveRef.current) return
+    const snapshot = pendingSaveRef.current
+    pendingSaveRef.current = null
+    try {
+      await window.api.cues.save(snapshot)
+    } finally {
+      setDirty(false)
+    }
+  }, [])
+
+  const scheduleSave = useCallback(
+    (next: Cue[]) => {
+      pendingSaveRef.current = next
+      setDirty(true)
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      saveTimer.current = setTimeout(() => {
+        saveTimer.current = null
+        void flushSave()
+      }, SAVE_DEBOUNCE_MS)
+    },
+    [flushSave],
+  )
+
+  // Flush any outstanding save when unmounting (workspace switch, app close)
+  // or when the window is about to close.
+  useEffect(() => {
+    const onBeforeUnload = () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
+        saveTimer.current = null
+      }
+      void flushSave()
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload)
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      void flushSave()
+    }
+  }, [flushSave])
+
+  /**
+   * Any cue-list mutation advances the playhead memo so no cue fires
+   * retroactively. If you add or edit a cue such that its trigger lands
+   * at or before the current LTC, it stays dormant until the playhead
+   * crosses it forward next time. This specifically kills the
+   * "adding a cue immediately fires PC 0" race: the click-handler
+   * captures `currentTc` at render time, but by the time the cue-list
+   * effect re-runs, the playhead may have advanced past the prior
+   * memo value.
+   */
+  function armAfterEdit() {
+    const tc = parseTimecode(currentTc)
+    if (!tc) return
+    const nowMs = timecodeToMs(tc, fps)
+    const prev = prevTcMsRef.current ?? Number.NEGATIVE_INFINITY
+    prevTcMsRef.current = Math.max(prev, nowMs)
+  }
+
+  function persist(next: Cue[]) {
+    armAfterEdit()
     setCues(next)
-    setDirty(true)
-    await window.api.cues.save(next)
-    setDirty(false)
+    scheduleSave(next)
   }
 
   function update(id: string, patch: Partial<Cue>) {

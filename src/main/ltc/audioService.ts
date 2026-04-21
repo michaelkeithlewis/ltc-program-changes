@@ -51,8 +51,19 @@ export class AudioService extends EventEmitter {
   private lastFrameAt = 0
   private lastCallbackAt = 0
   private lastLevel = 0
+  private lastRestartAt = 0
+  private lastResyncAt = 0
   private resyncCount = 0
   private streamRestarts = 0
+
+  /**
+   * Watchdog safety intervals — kept generous so the auto-recovery path
+   * can't become its own failure mode. A stream restart takes real time
+   * (RtAudio device init) and briefly blocks the event loop, so we
+   * absolutely don't want to do it more than once every few seconds.
+   */
+  private static readonly MIN_RESTART_INTERVAL_MS = 5000
+  private static readonly MIN_RESYNC_INTERVAL_MS = 1500
   private status: AudioStatus = {
     running: false,
     deviceId: null,
@@ -197,7 +208,11 @@ export class AudioService extends EventEmitter {
       const sinceCb = now - this.lastCallbackAt
       const sinceFrame = now - this.lastFrameAt
 
-      if (sinceCb > 3000) {
+      if (
+        sinceCb > 3000 &&
+        now - this.lastRestartAt > AudioService.MIN_RESTART_INTERVAL_MS
+      ) {
+        this.lastRestartAt = now
         this.streamRestarts += 1
         this.emit('warning', {
           kind: 'stream-stalled',
@@ -210,7 +225,12 @@ export class AudioService extends EventEmitter {
       // Only treat "no frames" as a problem if there's actually signal on
       // the selected channel. No signal == nothing to decode, not a bug.
       const hasSignal = this.lastLevel > 0.004
-      if (sinceFrame > 1500 && hasSignal) {
+      if (
+        sinceFrame > 1500 &&
+        hasSignal &&
+        now - this.lastResyncAt > AudioService.MIN_RESYNC_INTERVAL_MS
+      ) {
+        this.lastResyncAt = now
         this.resyncCount += 1
         this.decoder.softReset()
         this.lastFrameAt = now
