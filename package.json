@@ -1,0 +1,73 @@
+{
+  "name": "ltc-program-changes",
+  "version": "0.1.0",
+  "description": "Standalone app that fires MIDI Program Changes from LTC timecode, targeted at Allen & Heath dLive via MIDI-over-TCP",
+  "main": "out/main/index.js",
+  "author": "",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "dist:app": "electron-vite build && electron-builder --mac dir",
+    "dist": "electron-vite build && electron-builder --mac dmg",
+    "dist:all": "electron-vite build && electron-builder -mwl",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
+  },
+  "dependencies": {
+    "electron-store": "^10.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "electron": "^32.1.2",
+    "electron-builder": "^25.0.5",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8"
+  },
+  "build": {
+    "appId": "com.ltc.programchanges",
+    "productName": "LTC Program Changes",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.music",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "This app needs microphone/audio input access to decode SMPTE LTC timecode from your audio interface."
+      }
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
