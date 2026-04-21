@@ -79,6 +79,8 @@ export interface Workspace {
   preRollMs: number
   rxChannels: number[]
   audioInputDeviceId?: string
+  /** 1-indexed channel on the selected input device. Default 1. */
+  audioInputChannel?: number
 }
 
 export interface WorkspaceSummary {
@@ -111,6 +113,7 @@ export interface AppSettings {
   dlive: DliveConnectionConfig
   frameRate: FrameRate
   audioInputDeviceId?: string
+  audioInputChannel?: number
   preRollMs: number
   rxChannels: number[]
   currentWorkspaceId: string

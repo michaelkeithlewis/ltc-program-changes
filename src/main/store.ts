@@ -126,6 +126,7 @@ class JsonStore {
     settings.preRollMs = ws.preRollMs
     settings.rxChannels = ws.rxChannels
     settings.audioInputDeviceId = ws.audioInputDeviceId
+    settings.audioInputChannel = ws.audioInputChannel
   }
 
   private currentWorkspace(): Workspace {
@@ -181,6 +182,10 @@ class JsonStore {
       }
       if ('audioInputDeviceId' in patch) {
         ws.audioInputDeviceId = patch.audioInputDeviceId
+        touched = true
+      }
+      if ('audioInputChannel' in patch) {
+        ws.audioInputChannel = patch.audioInputChannel
         touched = true
       }
       if (touched) ws.updatedAt = Date.now()
