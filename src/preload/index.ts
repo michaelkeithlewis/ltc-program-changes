@@ -84,6 +84,11 @@ const api: IpcApi = {
     ipcRenderer.on('midi:log', listener)
     return () => ipcRenderer.off('midi:log', listener)
   },
+  onMidiBatch: (cb) => {
+    const listener = (_e: unknown, batch: MidiLogEntry[]) => cb(batch)
+    ipcRenderer.on('midi:logBatch', listener)
+    return () => ipcRenderer.off('midi:logBatch', listener)
+  },
   onReceived: (cb) => {
     const listener = (_e: unknown, s: LastReceivedSnapshot) => cb(s)
     ipcRenderer.on('midi:received', listener)

@@ -24,6 +24,7 @@ interface AppState {
   setCues: (c: Cue[]) => void
   setStatus: (s: ConnectionStatus) => void
   appendLog: (e: MidiLogEntry) => void
+  appendLogBatch: (entries: MidiLogEntry[]) => void
   setLog: (e: MidiLogEntry[]) => void
   setReceived: (s: LastReceivedSnapshot) => void
   setWorkspaces: (w: WorkspaceSummary[]) => void
@@ -48,6 +49,14 @@ export const useApp = create<AppState>((set) => ({
   setCues: (c) => set({ cues: c }),
   setStatus: (s) => set({ status: s }),
   appendLog: (e) => set((st) => ({ log: [...st.log.slice(-399), e] })),
+  appendLogBatch: (entries) =>
+    set((st) => {
+      if (entries.length === 0) return {}
+      const merged = [...st.log, ...entries]
+      const trimmed =
+        merged.length > 400 ? merged.slice(merged.length - 400) : merged
+      return { log: trimmed }
+    }),
   setLog: (e) => set({ log: e }),
   setReceived: (s) => set({ received: s }),
   setWorkspaces: (w) => set({ workspaces: w }),

@@ -14,6 +14,7 @@ export function App() {
     setCues,
     setStatus,
     appendLog,
+    appendLogBatch,
     setLog,
     setReceived,
     setWorkspaces,
@@ -24,6 +25,7 @@ export function App() {
   useEffect(() => {
     let offStatus: (() => void) | undefined
     let offMidi: (() => void) | undefined
+    let offMidiBatch: (() => void) | undefined
     let offRecv: (() => void) | undefined
     let offWs: (() => void) | undefined
     ;(async () => {
@@ -43,12 +45,14 @@ export function App() {
       setWorkspaces(wsList)
       offStatus = window.api.onStatus(setStatus)
       offMidi = window.api.onMidi(appendLog)
+      offMidiBatch = window.api.onMidiBatch(appendLogBatch)
       offRecv = window.api.onReceived(setReceived)
       offWs = window.api.onWorkspaces(setWorkspaces)
     })()
     return () => {
       offStatus?.()
       offMidi?.()
+      offMidiBatch?.()
       offRecv?.()
       offWs?.()
     }
@@ -57,6 +61,7 @@ export function App() {
     setCues,
     setStatus,
     appendLog,
+    appendLogBatch,
     setLog,
     setReceived,
     setWorkspaces,

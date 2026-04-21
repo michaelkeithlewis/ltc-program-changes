@@ -25,6 +25,22 @@ const lastReceived: LastReceivedSnapshot = {
   lastProgramChange: {},
 }
 
+/**
+ * Outbound IPC batching for MIDI log entries. dLive fires enormous bursts
+ * of NRPN traffic during scene recalls (hundreds of messages per
+ * millisecond), and delivering one IPC event per message will queue
+ * behind the renderer's event loop until memory or the IPC channel
+ * itself give out. We coalesce into `midi:logBatch` bursts flushed at
+ * the next tick, with a hard tick-size cap so a pathological burst is
+ * dropped at the edge rather than propagated.
+ */
+const logTxBuf: MidiLogEntry[] = []
+let logFlushScheduled = false
+const LOG_TX_CAP_PER_FLUSH = 200
+const LOG_RECEIVED_SNAPSHOT_THROTTLE_MS = 50
+let lastReceivedSnapshotAt = 0
+let receivedSnapshotPending = false
+
 /** Safely send to the renderer; no-op if window is gone. */
 function sendToRenderer(channel: string, payload: unknown) {
   if (isQuitting) return
@@ -42,7 +58,49 @@ function sendToRenderer(channel: string, payload: unknown) {
 function pushLog(entry: MidiLogEntry) {
   logBuffer.push(entry)
   if (logBuffer.length > LOG_CAP) logBuffer.splice(0, logBuffer.length - LOG_CAP)
-  sendToRenderer('midi:log', entry)
+  logTxBuf.push(entry)
+  if (logTxBuf.length > LOG_TX_CAP_PER_FLUSH * 4) {
+    // Absolute backstop: drop oldest entries rather than grow unbounded
+    // between ticks. The renderer only displays 400 entries anyway so
+    // loss at this magnitude is purely diagnostic noise.
+    logTxBuf.splice(0, logTxBuf.length - LOG_TX_CAP_PER_FLUSH)
+  }
+  if (!logFlushScheduled) {
+    logFlushScheduled = true
+    setImmediate(flushLogBatch)
+  }
+}
+
+function flushLogBatch() {
+  logFlushScheduled = false
+  if (logTxBuf.length === 0) return
+  const batch = logTxBuf.splice(0, LOG_TX_CAP_PER_FLUSH)
+  sendToRenderer('midi:logBatch', batch)
+  if (logTxBuf.length > 0) {
+    // More arrived while we were flushing — schedule another tick rather
+    // than sending a giant single payload.
+    logFlushScheduled = true
+    setImmediate(flushLogBatch)
+  }
+}
+
+function scheduleReceivedSnapshot() {
+  const now = Date.now()
+  if (now - lastReceivedSnapshotAt >= LOG_RECEIVED_SNAPSHOT_THROTTLE_MS) {
+    lastReceivedSnapshotAt = now
+    sendToRenderer('midi:received', lastReceived)
+    receivedSnapshotPending = false
+    return
+  }
+  if (receivedSnapshotPending) return
+  receivedSnapshotPending = true
+  const wait =
+    LOG_RECEIVED_SNAPSHOT_THROTTLE_MS - (now - lastReceivedSnapshotAt)
+  setTimeout(() => {
+    receivedSnapshotPending = false
+    lastReceivedSnapshotAt = Date.now()
+    sendToRenderer('midi:received', lastReceived)
+  }, Math.max(0, wait))
 }
 
 function shouldAcceptRx(channel: number | undefined): boolean {
@@ -112,7 +170,7 @@ app.whenReady().then(() => {
             program: m.program,
           }
         }
-        sendToRenderer('midi:received', lastReceived)
+        scheduleReceivedSnapshot()
       }
 
       pushLog({

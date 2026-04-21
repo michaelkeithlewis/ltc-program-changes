@@ -222,6 +222,7 @@ export interface IpcApi {
   }
   onStatus: (cb: (s: ConnectionStatus) => void) => () => void
   onMidi: (cb: (e: MidiLogEntry) => void) => () => void
+  onMidiBatch: (cb: (batch: MidiLogEntry[]) => void) => () => void
   onReceived: (cb: (s: LastReceivedSnapshot) => void) => () => void
   onWorkspaces: (cb: (list: WorkspaceSummary[]) => void) => () => void
   onLtcFrame: (cb: (f: LtcFrameEvent) => void) => () => void

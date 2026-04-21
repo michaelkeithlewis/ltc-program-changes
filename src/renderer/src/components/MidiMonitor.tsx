@@ -10,11 +10,20 @@ function fmtTime(ms: number) {
 
 type DirFilter = 'all' | 'out' | 'in'
 
+/**
+ * Message kinds that are pure noise for this application (we only care
+ * about PC and real user-scale events). dLive in particular fires
+ * thousands of these per scene recall, so hiding them by default keeps
+ * the monitor useful and keeps the DOM small.
+ */
+const NOISY_KINDS = new Set<string>(['nrpn', 'cc', 'pitchBend', 'channelPressure', 'polyPressure'])
+
 export function MidiMonitor() {
   const log = useApp((s) => s.log)
   const settings = useApp((s) => s.settings)
   const [dirFilter, setDirFilter] = useState<DirFilter>('all')
   const [viewChannel, setViewChannel] = useState<number | 'all'>('all')
+  const [hideNoisy, setHideNoisy] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const rxChannels = settings?.rxChannels ?? []
@@ -23,13 +32,23 @@ export function MidiMonitor() {
     return log.filter((e) => {
       if (dirFilter !== 'all' && e.direction !== dirFilter) return false
       if (viewChannel !== 'all' && e.channel !== viewChannel) return false
+      if (hideNoisy && e.kind && NOISY_KINDS.has(e.kind)) return false
       return true
     })
-  }, [log, dirFilter, viewChannel])
+  }, [log, dirFilter, viewChannel, hideNoisy])
 
+  // Auto-scroll, but rate-limited. A burst of N log entries used to fire
+  // N scrollIntoView calls back-to-back; now we do one per animation frame
+  // at most.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' })
+    let raf = 0
+    raf = requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ block: 'end' })
+    })
+    return () => cancelAnimationFrame(raf)
   }, [filtered])
+
+  const hiddenCount = log.length - filtered.length
 
   return (
     <div className="panel">
@@ -87,6 +106,27 @@ export function MidiMonitor() {
             </option>
           ))}
         </select>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            color: 'var(--muted)',
+            marginLeft: 6,
+            cursor: 'pointer',
+          }}
+          title="Hide NRPN / CC / pitch-bend / aftertouch traffic. dLive emits thousands of these per scene recall — hiding them keeps the monitor readable."
+        >
+          <input
+            type="checkbox"
+            checked={hideNoisy}
+            onChange={(e) => setHideNoisy(e.target.checked)}
+          />
+          Hide NRPN/CC
+          {hiddenCount > 0 && hideNoisy && (
+            <span style={{ color: 'var(--warn)' }}>· {hiddenCount} hidden</span>
+          )}
+        </label>
         {rxChannels.length > 0 && (
           <button
             onClick={async () => {
