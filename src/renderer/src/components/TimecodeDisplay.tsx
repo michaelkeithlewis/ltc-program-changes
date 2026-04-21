@@ -131,7 +131,11 @@ export function TimecodeDisplay() {
     const reader = new LtcReader()
     readerRef.current = reader
     await reader.start(
-      { deviceId: deviceId || undefined, channel },
+      {
+        deviceId: deviceId || undefined,
+        channel,
+        exactChannelCount: channelCount > 0 ? channelCount : undefined,
+      },
       {
         onTimecode: (tc) => setTimecode(tc, 'ltc'),
         onLevel: setLevel,
@@ -238,15 +242,37 @@ export function TimecodeDisplay() {
         </div>
 
         <div className="field">
-          <label>
-            Input Channel
-            <span style={{ color: 'var(--muted)', marginLeft: 8 }}>
-              {probing
-                ? '· detecting…'
-                : channelCount > 0
-                  ? `· ${channelCount} channel${channelCount === 1 ? '' : 's'} on this device`
-                  : ''}
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              justifyContent: 'space-between',
+            }}
+          >
+            <span>
+              Input Channel
+              <span style={{ color: 'var(--muted)', marginLeft: 8 }}>
+                {probing
+                  ? '· detecting…'
+                  : channelCount > 0
+                    ? `· ${channelCount} channel${channelCount === 1 ? '' : 's'} on this device`
+                    : ''}
+              </span>
             </span>
+            <button
+              onClick={() => {
+                if (!deviceId) return
+                channelCountCache.current.delete(deviceId)
+                // Force the probe effect to re-run.
+                setChannelCount(0)
+              }}
+              disabled={listening || probing || !deviceId}
+              style={{ padding: '2px 8px', fontSize: 10 }}
+              title="Re-detect channel count (e.g. after changing the device's format in Audio MIDI Setup)"
+            >
+              Re-probe
+            </button>
           </label>
           {channelCount === 1 ? (
             <div
@@ -292,9 +318,11 @@ export function TimecodeDisplay() {
             </div>
           )}
           <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 6 }}>
-            {channelCount > 1
+            {channelCount > 2
               ? 'Pick the physical input carrying your LTC feed. Saved per workspace.'
-              : 'macOS exposes only the channels of the currently selected device. Use Audio MIDI Setup to create an Aggregate Device if you need access to more inputs.'}
+              : channelCount === 2
+                ? 'Only 2 channels detected. If your interface has more, open macOS Audio MIDI Setup → select the device → set its Input Format to the higher channel count, then click Re-probe.'
+                : 'macOS exposes only the channels of the currently selected device. If you need more, use Audio MIDI Setup to change the device format or create an Aggregate Device.'}
           </div>
         </div>
 

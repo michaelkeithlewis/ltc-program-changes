@@ -5,16 +5,29 @@
 const workletUrl = new URL('/ltc-worklet.js', import.meta.url).href
 
 /**
- * Briefly open a stream on the selected audio device to discover how many
- * channels it actually exposes. Returns the channel count reported by the
- * browser's MediaStreamAudioSourceNode (this is the real hardware count, not
- * what we asked for).
+ * Discover the real channel count of an audio input device.
  *
- * The stream is torn down immediately — no audio processing happens.
+ * Chromium's default WebRTC capture pipeline silently down-mixes everything
+ * to stereo, so `channelCount: { ideal: 32 }` lies and gives you 2 on an
+ * 8-input device. Getting the truth requires:
+ *
+ *   1. The main process to launch with `--try-supported-channel-layouts`
+ *      (done in `src/main/index.ts`) so Chromium asks the OS for the real
+ *      layout instead of forcing stereo.
+ *   2. Requesting with `channelCount: { exact: N }` — descending through
+ *      plausible counts until the OS accepts one. `exact` throws
+ *      OverconstrainedError when the device can't deliver N, which lets
+ *      us bracket the real max.
+ *
+ * Returns the channel count the OS/driver reports for this device. Always
+ * at least 1.
  */
-export async function probeDeviceChannelCount(
+const PROBE_CANDIDATES = [64, 32, 24, 16, 12, 10, 8, 6, 4, 3, 2, 1]
+
+async function tryOpen(
   deviceId: string | undefined,
-): Promise<number> {
+  exactChannels: number,
+): Promise<number | null> {
   let stream: MediaStream | null = null
   let ctx: AudioContext | null = null
   try {
@@ -24,12 +37,16 @@ export async function probeDeviceChannelCount(
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: false,
-        channelCount: { ideal: 32 },
+        channelCount: { exact: exactChannels },
       },
     })
     ctx = new AudioContext()
     const src = ctx.createMediaStreamSource(stream)
+    // Trust the source node — Chromium sometimes accepts a constraint but
+    // delivers fewer channels anyway.
     return Math.max(1, src.channelCount)
+  } catch {
+    return null
   } finally {
     try {
       stream?.getTracks().forEach((t) => t.stop())
@@ -42,6 +59,24 @@ export async function probeDeviceChannelCount(
       /* noop */
     }
   }
+}
+
+export async function probeDeviceChannelCount(
+  deviceId: string | undefined,
+): Promise<number> {
+  // Walk the candidate list from largest to smallest. First one that opens
+  // successfully is the maximum the device will deliver.
+  for (const n of PROBE_CANDIDATES) {
+    const got = await tryOpen(deviceId, n)
+    if (got !== null) {
+      // Prefer what the AudioSourceNode actually reports. If it's larger
+      // than what we asked for (rare), keep the larger number. If smaller
+      // (Chromium downmixed despite 'exact'), keep the smaller one because
+      // that's what real capture will give us.
+      return got
+    }
+  }
+  return 1
 }
 
 export interface LtcReaderEvents {
@@ -57,6 +92,9 @@ export interface LtcReaderOptions {
   deviceId?: string
   /** 1-indexed channel of the device to decode. Defaults to 1. */
   channel?: number
+  /** If known, the exact hardware channel count to request. When omitted
+   *  we fall back to probing inside start(). */
+  exactChannelCount?: number
 }
 
 export class LtcReader {
@@ -68,16 +106,20 @@ export class LtcReader {
 
   async start(opts: LtcReaderOptions, handlers: LtcReaderEvents) {
     try {
-      // Ask for as many channels as the device will give us. Browsers cap
-      // this to whatever the OS reports for the device; we'll use the real
-      // count from the source node below.
+      // We have to use `{ exact: N }` to defeat Chromium's default stereo
+      // downmix. If caller already knows N, use it; otherwise probe the
+      // device so we open in the right layout the first time.
+      const detected =
+        opts.exactChannelCount ??
+        (await probeDeviceChannelCount(opts.deviceId))
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: opts.deviceId ? { exact: opts.deviceId } : undefined,
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
-          channelCount: { ideal: 32 },
+          channelCount: { exact: detected },
         },
       })
 

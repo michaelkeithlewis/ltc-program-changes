@@ -12,6 +12,17 @@ import type {
   WorkspaceExport,
 } from '../shared/types'
 
+// By default Chromium's WebRTC audio capture path forces every input to
+// stereo, which means getUserMedia() would silently give us 2 channels even
+// on an 8- or 16-input interface. These flags tell Chromium to honour the
+// device's real channel layout and expose it to getUserMedia. Must be set
+// before `app.whenReady()`.
+app.commandLine.appendSwitch('try-supported-channel-layouts')
+app.commandLine.appendSwitch(
+  'enable-features',
+  'WebRtcAllowInputVolumeAdjustment',
+)
+
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
 const dlive = new DliveClient()
