@@ -42,6 +42,8 @@ const SAVE_DEBOUNCE_MS = 250
  */
 const SEEK_JUMP_MS = 2000
 
+type DropMark = { id: string; position: 'before' | 'after' } | null
+
 export function CueList() {
   const cues = useApp((s) => s.cues)
   const setCues = useApp((s) => s.setCues)
@@ -51,6 +53,13 @@ export function CueList() {
   const lastFiredCueId = useApp((s) => s.lastFiredCueId)
   const setLastFired = useApp((s) => s.setLastFired)
   const [dirty, setDirty] = useState(false)
+
+  // DnD state: which row is being dragged, and where its drop indicator
+  // should be rendered. `dropMark.id` is the row being hovered over,
+  // `position` is above or below it based on cursor Y relative to the
+  // row's vertical midpoint.
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dropMark, setDropMark] = useState<DropMark>(null)
 
   /**
    * Last-known playhead in ms. Cues fire only when the playhead *crosses*
@@ -239,6 +248,59 @@ export function CueList() {
     setLastFired(null)
   }
 
+  function endDrag() {
+    setDraggingId(null)
+    setDropMark(null)
+  }
+
+  function onRowDragStart(e: React.DragEvent, id: string) {
+    setDraggingId(id)
+    e.dataTransfer.effectAllowed = 'move'
+    // Firefox refuses to initiate a drag unless some data is set.
+    e.dataTransfer.setData('text/plain', id)
+  }
+
+  function onRowDragOver(e: React.DragEvent, id: string) {
+    if (!draggingId) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const position: 'before' | 'after' =
+      e.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+    // Avoid needless re-renders while hovering the same half of the same row.
+    setDropMark((curr) =>
+      curr && curr.id === id && curr.position === position
+        ? curr
+        : { id, position },
+    )
+  }
+
+  function onRowDrop(e: React.DragEvent) {
+    e.preventDefault()
+    if (!draggingId || !dropMark) {
+      endDrag()
+      return
+    }
+    const srcIdx = cues.findIndex((c) => c.id === draggingId)
+    const tgtIdx = cues.findIndex((c) => c.id === dropMark.id)
+    if (srcIdx < 0 || tgtIdx < 0) {
+      endDrag()
+      return
+    }
+    // Compute final insertion index in the post-removal array.
+    let insertIdx = tgtIdx + (dropMark.position === 'after' ? 1 : 0)
+    if (srcIdx < insertIdx) insertIdx -= 1
+    if (insertIdx === srcIdx) {
+      endDrag()
+      return
+    }
+    const next = [...cues]
+    const [moved] = next.splice(srcIdx, 1)
+    next.splice(insertIdx, 0, moved)
+    void persist(next)
+    endDrag()
+  }
+
   const hasLiveTc = !!parseTimecode(currentTc)
 
   return (
@@ -294,11 +356,12 @@ export function CueList() {
         <table className="cues">
           <thead>
             <tr>
+              <th style={{ width: 22 }} aria-label="Drag to reorder"></th>
               <th style={{ width: 36 }}>On</th>
               <th style={{ width: 140 }}>Timecode</th>
               <th>Name</th>
-              <th style={{ width: 64 }} title="MIDI output channel (1-16)">
-                Out Ch
+              <th style={{ width: 72 }} title="MIDI output channel (1-16)">
+                Ch
               </th>
               <th style={{ width: 80 }} title="Program Change number (0-127)">
                 PC #
@@ -310,7 +373,7 @@ export function CueList() {
             {cues.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   style={{
                     color: 'var(--muted)',
                     padding: 24,
@@ -325,8 +388,35 @@ export function CueList() {
             {cues.map((c) => {
               const isArmed = lastFiredCueId === c.id
               const tcValid = !!parseTimecode(c.timecode)
+              const isDragging = draggingId === c.id
+              const isDropBefore =
+                dropMark?.id === c.id && dropMark.position === 'before'
+              const isDropAfter =
+                dropMark?.id === c.id && dropMark.position === 'after'
+              const rowClasses = [
+                isArmed ? 'fired' : '',
+                isDragging ? 'dragging' : '',
+                isDropBefore ? 'drop-before' : '',
+                isDropAfter ? 'drop-after' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')
               return (
-                <tr key={c.id} className={isArmed ? 'fired' : ''}>
+                <tr
+                  key={c.id}
+                  className={rowClasses}
+                  onDragOver={(e) => onRowDragOver(e, c.id)}
+                  onDrop={onRowDrop}
+                  onDragEnd={endDrag}
+                >
+                  <td
+                    className="drag-handle"
+                    draggable
+                    onDragStart={(e) => onRowDragStart(e, c.id)}
+                    title="Drag to reorder"
+                  >
+                    ⋮⋮
+                  </td>
                   <td>
                     <input
                       type="checkbox"

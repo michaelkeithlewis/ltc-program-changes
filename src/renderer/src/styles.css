@@ -110,7 +110,7 @@ select:focus {
 
 .main {
   display: grid;
-  grid-template-columns: 320px 1fr 420px;
+  grid-template-columns: 360px 1fr 420px;
   min-height: 0;
 }
 
@@ -124,6 +124,31 @@ select:focus {
 .panel:last-child {
   border-right: none;
   border-left: 1px solid var(--border);
+}
+
+/* Left sidebar stacks multiple panels vertically and scrolls as one
+ * unit when content exceeds window height. Panels inside drop their
+ * own borders/overflow so the stack feels cohesive. */
+.sidebar-stack {
+  background: var(--bg-2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+.sidebar-stack > .panel {
+  background: transparent;
+  border-right: none;
+  flex: 0 0 auto;
+  min-height: 0;
+}
+.sidebar-stack > .panel + .panel {
+  border-top: 1px solid var(--border);
+}
+.sidebar-stack > .panel > .panel-body {
+  overflow: visible;
+  flex: 0 0 auto;
 }
 
 .panel h2 {
@@ -199,6 +224,13 @@ select:focus {
   user-select: none;
   line-height: 1;
 }
+/* When the readout lives in the sidebar it needs to fit a narrower
+ * column. Shrunk + fluid so it stays readable regardless of resize. */
+.tc-display.compact {
+  font-size: clamp(28px, 8vw, 40px);
+  padding: 14px 8px;
+  letter-spacing: 0.02em;
+}
 .tc-display.stale {
   color: var(--muted);
 }
@@ -255,6 +287,7 @@ table.cues th {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
+  white-space: nowrap;
 }
 table.cues tbody tr {
   transition: background 0.1s ease;
@@ -268,6 +301,32 @@ table.cues tr.armed {
 table.cues tr.fired {
   background: rgba(61, 220, 132, 0.1);
   box-shadow: inset 3px 0 0 var(--good);
+}
+/* DnD visuals: a 2px accent line above or below the hovered row, plus
+ * dimming of the row being dragged. Using inset box-shadow on every cell
+ * keeps the indicator unbroken across the row without shifting layout. */
+table.cues tr.dragging > td {
+  opacity: 0.35;
+}
+table.cues tr.drop-before > td {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+table.cues tr.drop-after > td {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+table.cues td.drag-handle {
+  cursor: grab;
+  color: var(--muted);
+  text-align: center;
+  user-select: none;
+  padding: 8px 4px;
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: -2px;
+}
+table.cues td.drag-handle:active {
+  cursor: grabbing;
+  color: var(--accent);
 }
 table.cues input,
 table.cues select {

@@ -182,50 +182,46 @@ export function TimecodeDisplay() {
   const selectedLabel = selected?.name ?? '—'
 
   return (
-    <div>
-      <div className={`tc-display ${stale ? 'stale' : ''}`}>{display}</div>
-      <div className="tc-sub">
-        Source:{' '}
-        <strong style={{ color: 'var(--text)' }}>
-          {tcSource === 'none'
-            ? '—'
-            : tcSource === 'ltc'
-              ? `${selectedLabel} · ch ${channel}`
-              : 'Simulator'}
-        </strong>
-        {tcSource === 'ltc' && stale && (
-          <span style={{ color: 'var(--warn)', marginLeft: 8 }}>
-            · signal lost
-          </span>
-        )}
-      </div>
-
-      <div
-        style={{
-          marginTop: 20,
-          padding: 14,
-          border: '1px solid var(--border)',
-          borderRadius: 8,
-          background: 'var(--bg-2)',
-        }}
-      >
-        <div
+    <div className="panel">
+      <h2 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span>Timecode (LTC)</span>
+        <span
           style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 10,
+            marginLeft: 'auto',
+            textTransform: 'none',
+            letterSpacing: 0,
+            color: 'var(--muted)',
+            fontSize: 11,
           }}
         >
-          <strong style={{ fontSize: 13 }}>Timecode Input (LTC)</strong>
-          <span style={{ color: 'var(--muted)', fontSize: 11 }}>
-            {listening
-              ? `Decoding · ${status?.sampleRate ?? 0} Hz`
-              : refreshing
-                ? 'Scanning…'
-                : 'Idle'}
-          </span>
+          {listening
+            ? `Decoding · ${status?.sampleRate ?? 0} Hz`
+            : refreshing
+              ? 'Scanning…'
+              : 'Idle'}
+        </span>
+      </h2>
+      <div className="panel-body">
+        <div className={`tc-display compact ${stale ? 'stale' : ''}`}>
+          {display}
         </div>
+        <div className="tc-sub">
+          Source:{' '}
+          <strong style={{ color: 'var(--text)' }}>
+            {tcSource === 'none'
+              ? '—'
+              : tcSource === 'ltc'
+                ? `${selectedLabel} · ch ${channel}`
+                : 'Simulator'}
+          </strong>
+          {tcSource === 'ltc' && stale && (
+            <span style={{ color: 'var(--warn)', marginLeft: 8 }}>
+              · signal lost
+            </span>
+          )}
+        </div>
+
+        <div style={{ marginTop: 16 }} />
 
         <div className="field">
           <label
@@ -341,23 +337,6 @@ export function TimecodeDisplay() {
               >
                 Resync
               </button>
-              {(status?.resyncs ?? 0) + (status?.streamRestarts ?? 0) > 0 && (
-                <span
-                  style={{ color: 'var(--muted)', fontSize: 11 }}
-                  title="Automatic recoveries performed since this stream started"
-                >
-                  · auto-recoveries:{' '}
-                  {(status?.resyncs ?? 0) + (status?.streamRestarts ?? 0)}
-                </span>
-              )}
-              {(status?.rejectedFrames ?? 0) > 0 && (
-                <span
-                  style={{ color: 'var(--muted)', fontSize: 11 }}
-                  title="Frames rejected by the decoder's two-frame corroboration filter — almost always bit errors that would have produced a spurious timecode"
-                >
-                  · rejected: {status?.rejectedFrames}
-                </span>
-              )}
             </>
           )}
         </div>

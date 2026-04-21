@@ -99,19 +99,19 @@ export function App() {
       </div>
 
       <div className="main">
-        <ConnectionPanel />
+        <div className="sidebar-stack">
+          <ConnectionPanel />
+          <TimecodeDisplay />
+        </div>
 
         <div
           style={{
             display: 'grid',
-            gridTemplateRows: 'auto 1fr auto',
+            gridTemplateRows: '1fr auto',
             minHeight: 0,
             overflow: 'hidden',
           }}
         >
-          <div style={{ padding: '20px 20px 16px' }}>
-            <TimecodeDisplay />
-          </div>
           <div
             style={{
               minHeight: 0,
