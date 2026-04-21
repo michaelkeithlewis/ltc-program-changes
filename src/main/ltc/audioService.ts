@@ -27,6 +27,8 @@ export interface AudioStatus {
   resyncs?: number
   /** Incremented each time the audio stream had to be rebuilt. */
   streamRestarts?: number
+  /** Running count of frames parsed but dropped by the corroboration filter. */
+  rejectedFrames?: number
 }
 
 export interface StartOptions {
@@ -179,6 +181,7 @@ export class AudioService extends EventEmitter {
       sampleRate,
       resyncs: this.resyncCount,
       streamRestarts: this.streamRestarts,
+      rejectedFrames: 0,
     }
     this.emit('status', this.status)
   }
@@ -207,6 +210,14 @@ export class AudioService extends EventEmitter {
       const now = Date.now()
       const sinceCb = now - this.lastCallbackAt
       const sinceFrame = now - this.lastFrameAt
+
+      // Surface rejected-frame count in status so the UI can show the
+      // user when the corroboration filter is actively catching errors.
+      const rejected = this.decoder.rejectedFrames()
+      if (rejected !== (this.status.rejectedFrames ?? 0)) {
+        this.status = { ...this.status, rejectedFrames: rejected }
+        this.emit('status', this.status)
+      }
 
       if (
         sinceCb > 3000 &&

@@ -20,6 +20,30 @@ export interface DecodedFrame {
 export type FrameCallback = (f: DecodedFrame) => void
 export type LevelCallback = (rms: number) => void
 
+/**
+ * Confirmation window, in nominal milliseconds at 30 fps. A newly decoded
+ * frame is only emitted once a SECOND decoded frame corroborates it —
+ * meaning the two candidates differ by a small, plausible temporal delta.
+ * This blocks random bit-flip errors (a single-bit flip in an otherwise
+ * valid LTC frame can change the TC by seconds while still passing the
+ * range check) from ever reaching the cue firing logic.
+ *
+ * Cost: one frame of latency, ~33 ms. Well below human perception.
+ */
+const CORROBORATION_MAX_FORWARD_MS = 400 // ~12 frames at 30 fps
+const CORROBORATION_MAX_REVERSE_MS = 200 // covers reverse-playback LTC
+
+function frameToMs(f: DecodedFrame): number {
+  // Use 30 fps nominal for comparison — we only need a stable monotonic mapping.
+  const m = f.tc.match(/^(\d{2}):(\d{2}):(\d{2})[:;](\d{2})$/)
+  if (!m) return 0
+  const hh = parseInt(m[1], 10)
+  const mm = parseInt(m[2], 10)
+  const ss = parseInt(m[3], 10)
+  const ff = parseInt(m[4], 10)
+  return (((hh * 60 + mm) * 60 + ss) * 1000) + Math.round((ff / 30) * 1000)
+}
+
 export class LtcDecoder {
   private prevSample = 0
   private sampleCount = 0
@@ -33,6 +57,9 @@ export class LtcDecoder {
   private rmsAccum = 0
   private rmsCount = 0
   private lastEmitAt = 0
+  private pendingFrame: DecodedFrame | null = null
+  private lastEmittedFrameMs = -1
+  private rejectedCount = 0
 
   constructor(
     private onFrame: FrameCallback,
@@ -52,6 +79,9 @@ export class LtcDecoder {
     this.rmsAccum = 0
     this.rmsCount = 0
     this.lastEmitAt = 0
+    this.pendingFrame = null
+    this.lastEmittedFrameMs = -1
+    this.rejectedCount = 0
   }
 
   /**
@@ -66,6 +96,14 @@ export class LtcDecoder {
     this.pendingShort = false
     this.bitBuf = []
     this.lastEmitAt = 0
+    this.pendingFrame = null
+    // Keep lastEmittedFrameMs so post-resync frames still get deduped against
+    // the last good emit; the confirmation step will gate bogus values.
+  }
+
+  /** How many frames parsed but rejected by the corroboration filter since last reset. */
+  rejectedFrames(): number {
+    return this.rejectedCount
   }
 
   /** Sample index at which we last emitted a decoded frame (0 if never). */
@@ -163,11 +201,55 @@ export class LtcDecoder {
 
     const frame = parseLtcFrame(this.bitBuf)
     if (!frame) return
-    // Throttle emits to avoid hammering IPC.
     const now = this.sampleCount
     if (now - this.lastEmitAt < 48) return
     this.lastEmitAt = now
-    this.onFrame(frame)
+    this.emitWithConfirmation(frame)
+  }
+
+  /**
+   * Two-frame rolling corroboration. A freshly parsed frame is held as
+   * `pendingFrame`; it's only handed up to `onFrame` once the NEXT parsed
+   * frame arrives and lands within a plausible temporal window relative
+   * to it. If the second frame is wildly inconsistent, the old pending
+   * is discarded (it was likely corrupt) and the new one takes its slot.
+   *
+   * Effect on bit errors: a lone bad frame never reaches consumers. A
+   * correlated burst of bad frames that happens to be self-consistent
+   * would still slip through, but that's vanishingly rare in practice
+   * for LTC.
+   *
+   * Effect on real seeks: two consecutive frames at the new position
+   * will naturally corroborate, so a seek is accepted after one frame
+   * of confirmation latency (~33 ms at 30 fps).
+   */
+  private emitWithConfirmation(frame: DecodedFrame) {
+    const pending = this.pendingFrame
+    if (!pending) {
+      this.pendingFrame = frame
+      return
+    }
+
+    const pendingMs = frameToMs(pending)
+    const frameMs = frameToMs(frame)
+    const delta = frameMs - pendingMs
+    const consistent =
+      delta >= -CORROBORATION_MAX_REVERSE_MS &&
+      delta <= CORROBORATION_MAX_FORWARD_MS
+
+    if (consistent) {
+      // Confirmed. Emit the pending frame (if different from last emit).
+      if (pendingMs !== this.lastEmittedFrameMs) {
+        this.onFrame(pending)
+        this.lastEmittedFrameMs = pendingMs
+      }
+      this.pendingFrame = frame
+    } else {
+      // Disagreement: pending was likely a single-bit error or glitch.
+      // Drop it, keep the newer frame as the next pending candidate.
+      this.rejectedCount += 1
+      this.pendingFrame = frame
+    }
   }
 }
 

@@ -29,6 +29,19 @@ const FIRE_CAP_PER_TICK = 16
  * don't queue N writes. */
 const SAVE_DEBOUNCE_MS = 250
 
+/**
+ * If a single playhead tick advances by more than this, we treat it as a
+ * seek, not a continuous playback advance. The memo moves to the new
+ * position but cues between old and new are NOT retroactively fired.
+ *
+ * Set generously at 2 s — a real show's playhead advances by at most a
+ * few frames (tens of ms) per tick, so anything this large is either
+ * a user-initiated seek on the LTC source or a decoder glitch that
+ * snuck past the corroboration filter. Either way, firing every cue
+ * between here and there is the wrong behaviour.
+ */
+const SEEK_JUMP_MS = 2000
+
 export function CueList() {
   const cues = useApp((s) => s.cues)
   const setCues = useApp((s) => s.setCues)
@@ -80,6 +93,16 @@ export function CueList() {
     const prev = prevTcMsRef.current
 
     if (prev !== null) {
+      const delta = nowMs - prev
+      // Massive forward jump = seek or a single-sample bogus TC that
+      // slipped past the decoder's corroboration filter. Move the memo
+      // but don't fire everything in between — the user almost certainly
+      // didn't want to. The cue that aligns with the new position will
+      // still fire on the very next tick.
+      if (delta > SEEK_JUMP_MS) {
+        prevTcMsRef.current = nowMs
+        return
+      }
       let fired = 0
       for (const { cue, ms } of sortedCues) {
         if (!cue.enabled) continue
@@ -88,9 +111,6 @@ export function CueList() {
           fireCue(cue)
           setLastFired(cue.id)
           if (++fired >= FIRE_CAP_PER_TICK) {
-            // Shouldn't happen in practice (N cues would all have to share
-            // the same frame), but prevents any conceivable runaway if the
-            // cue list is ever constructed pathologically.
             console.warn(
               `CueList: fire cap hit (${FIRE_CAP_PER_TICK}), skipping remaining cues for this tick`,
             )

@@ -157,6 +157,8 @@ export interface AudioStatus {
   resyncs?: number
   /** How many times the underlying RtAudio stream has been rebuilt. */
   streamRestarts?: number
+  /** How many decoded frames have been dropped by the corroboration filter. */
+  rejectedFrames?: number
 }
 
 /** Non-fatal notice from the audio service — useful for surfacing resyncs / recoveries in the UI. */

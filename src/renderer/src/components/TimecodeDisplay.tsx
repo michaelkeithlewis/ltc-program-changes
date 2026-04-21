@@ -350,6 +350,14 @@ export function TimecodeDisplay() {
                   {(status?.resyncs ?? 0) + (status?.streamRestarts ?? 0)}
                 </span>
               )}
+              {(status?.rejectedFrames ?? 0) > 0 && (
+                <span
+                  style={{ color: 'var(--muted)', fontSize: 11 }}
+                  title="Frames rejected by the decoder's two-frame corroboration filter — almost always bit errors that would have produced a spurious timecode"
+                >
+                  · rejected: {status?.rejectedFrames}
+                </span>
+              )}
             </>
           )}
         </div>
