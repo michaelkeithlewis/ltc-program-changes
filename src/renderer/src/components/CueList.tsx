@@ -119,48 +119,60 @@ export function CueList() {
   }
 
   return (
-    <div className="panel" style={{ borderRight: 'none' }}>
-      <h2>
-        Cue List
+    <div
+      className="panel"
+      style={{
+        borderRight: 'none',
+        borderLeft: 'none',
+        borderTop: '1px solid var(--border)',
+        flex: 1,
+        minHeight: 0,
+      }}
+    >
+      <h2 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span>Cue List</span>
         <span
           style={{
-            float: 'right',
+            marginLeft: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
             textTransform: 'none',
             letterSpacing: 0,
             color: dirty ? 'var(--warn)' : 'var(--muted)',
             fontSize: 11,
           }}
         >
-          {dirty ? 'saving…' : `${cues.length} cues · fps ${fps}`}
+          {dirty ? 'saving…' : `${cues.length} cue${cues.length === 1 ? '' : 's'} · ${fps} fps`}
+          <button
+            className="primary"
+            onClick={add}
+            style={{ padding: '4px 10px', fontSize: 11 }}
+          >
+            + Add cue
+          </button>
+          <button
+            onClick={resetFired}
+            title="Re-arm all cues"
+            style={{ padding: '4px 10px', fontSize: 11 }}
+          >
+            Reset fired
+          </button>
         </span>
       </h2>
       <div className="panel-body">
-        <div
-          style={{
-            display: 'flex',
-            gap: 8,
-            marginBottom: 12,
-            alignItems: 'center',
-          }}
-        >
-          <button className="primary" onClick={add}>
-            + Add cue
-          </button>
-          <button onClick={resetFired} title="Re-arm all cues">
-            Reset fired
-          </button>
-        </div>
-
         <table className="cues">
           <thead>
             <tr>
-              <th style={{ width: 30 }}>On</th>
+              <th style={{ width: 36 }}>On</th>
               <th style={{ width: 110 }}>Timecode</th>
               <th>Name</th>
-              <th style={{ width: 120 }}>Type</th>
-              <th style={{ width: 70 }}>Ch</th>
-              <th style={{ width: 110 }}>Value</th>
-              <th style={{ width: 140 }}></th>
+              <th style={{ width: 130 }}>Type</th>
+              <th style={{ width: 64 }} title="MIDI output channel (1-16)">
+                Out Ch
+              </th>
+              <th style={{ width: 90 }}>Value</th>
+              <th style={{ width: 120 }}></th>
             </tr>
           </thead>
           <tbody>
@@ -225,7 +237,7 @@ export function CueList() {
                       <option value="programChange">Program Change</option>
                     </select>
                   </td>
-                  <td>
+                  <td className="ch-cell">
                     <input
                       type="number"
                       min={1}
@@ -234,6 +246,7 @@ export function CueList() {
                       onChange={(e) =>
                         update(c.id, { channel: parseInt(e.target.value, 10) || 1 })
                       }
+                      title="MIDI output channel this cue fires on"
                     />
                   </td>
                   <td>

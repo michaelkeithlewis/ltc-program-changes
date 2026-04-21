@@ -5,7 +5,6 @@ import { TimecodeDisplay } from './components/TimecodeDisplay'
 import { CueList } from './components/CueList'
 import { MidiMonitor } from './components/MidiMonitor'
 import { Simulator } from './components/Simulator'
-import { InputPanel } from './components/InputPanel'
 import { WorkspaceBar } from './components/WorkspaceBar'
 import type { AppSettings } from '../../shared/types'
 
@@ -100,15 +99,24 @@ export function App() {
         <div
           style={{
             display: 'grid',
-            gridTemplateRows: 'auto auto 1fr auto',
+            gridTemplateRows: 'auto 1fr auto',
             minHeight: 0,
+            overflow: 'hidden',
           }}
         >
-          <div style={{ padding: 20 }}>
+          <div style={{ padding: '20px 20px 16px' }}>
             <TimecodeDisplay />
           </div>
-          <InputPanel />
-          <CueList />
+          <div
+            style={{
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <CueList />
+          </div>
           <Simulator />
         </div>
 

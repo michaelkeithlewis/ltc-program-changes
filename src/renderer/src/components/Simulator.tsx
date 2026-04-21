@@ -19,7 +19,8 @@ export function Simulator() {
 
   const fps = settings?.frameRate ?? 30
 
-  // Simulator transport
+  const [open, setOpen] = useState(false)
+
   const [tcInput, setTcInput] = useState('00:00:00:00')
   const [running, setRunning] = useState(false)
   const startedAt = useRef<{ wall: number; tcMs: number } | null>(null)
@@ -100,105 +101,141 @@ export function Simulator() {
     await window.api.dlive.sendBytes(bytes, `[test] ${bytesToLabel(bytes)}`)
   }
 
+  const status =
+    tcSource === 'simulator' ? (running ? 'Running' : 'Paused') : 'Idle'
+
   return (
     <div
       style={{
-        padding: 16,
         borderTop: '1px solid var(--border)',
+        background: 'var(--bg-2)',
       }}
     >
-      <div className="section-header">
-        <h3>Simulator & Test</h3>
-        <span style={{ color: 'var(--muted)', fontSize: 11 }}>
-          {tcSource === 'simulator'
-            ? running
-              ? 'Running'
-              : 'Paused'
-            : 'Idle'}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          padding: '10px 16px',
+          background: 'transparent',
+          border: 'none',
+          borderRadius: 0,
+          cursor: 'pointer',
+          color: 'var(--muted)',
+          fontSize: 11,
+          textTransform: 'uppercase',
+          letterSpacing: '0.12em',
+        }}
+        title={open ? 'Hide simulator' : 'Show simulator & manual send tools'}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ opacity: 0.6, fontSize: 9 }}>
+            {open ? '▼' : '▶'}
+          </span>
+          Simulator & Test
         </span>
-      </div>
+        <span style={{ textTransform: 'none', letterSpacing: 0 }}>
+          {status}
+          {running && (
+            <span style={{ marginLeft: 8, color: 'var(--accent)' }}>
+              · {currentTc || tcInput}
+            </span>
+          )}
+        </span>
+      </button>
 
-      <div className="sim-grid">
-        {/* Timecode simulator */}
-        <div className="sim-block">
-          <h3>Virtual Timecode</h3>
-          <div className="transport">
-            <input
-              className="tc-input"
-              value={running ? currentTc || tcInput : tcInput}
-              onChange={(e) => setTcInput(e.target.value)}
-              disabled={running}
-            />
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            {!running ? (
-              <button className="primary" onClick={play}>
-                ▶ Play
-              </button>
-            ) : (
-              <button className="danger" onClick={stop}>
-                ■ Stop
-              </button>
-            )}
-            <button onClick={jump} disabled={running}>
-              Jump
-            </button>
-          </div>
-          <div
-            style={{
-              marginTop: 8,
-              color: 'var(--muted)',
-              fontSize: 11,
-            }}
-          >
-            Cues will fire against this virtual timecode, exactly as they
-            would with live LTC.
+      {open && (
+        <div style={{ padding: '0 16px 16px' }}>
+          <div className="sim-grid">
+            <div className="sim-block">
+              <h3>Virtual Timecode</h3>
+              <div className="transport">
+                <input
+                  className="tc-input"
+                  value={running ? currentTc || tcInput : tcInput}
+                  onChange={(e) => setTcInput(e.target.value)}
+                  disabled={running}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                {!running ? (
+                  <button className="primary" onClick={play}>
+                    ▶ Play
+                  </button>
+                ) : (
+                  <button className="danger" onClick={stop}>
+                    ■ Stop
+                  </button>
+                )}
+                <button onClick={jump} disabled={running}>
+                  Jump
+                </button>
+              </div>
+              <div
+                style={{ marginTop: 8, color: 'var(--muted)', fontSize: 11 }}
+              >
+                Cues will fire against this virtual timecode, exactly as they
+                would with live LTC.
+              </div>
+            </div>
+
+            <div className="sim-block">
+              <h3>Send MIDI Manually</h3>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <label style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: 'var(--muted)' }}>
+                    Channel
+                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    max={16}
+                    value={testCh}
+                    onChange={(e) =>
+                      setTestCh(parseInt(e.target.value, 10) || 1)
+                    }
+                  />
+                </label>
+                <label style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: 'var(--muted)' }}>
+                    Scene
+                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={testScene}
+                    onChange={(e) =>
+                      setTestScene(parseInt(e.target.value, 10) || 1)
+                    }
+                  />
+                </label>
+                <label style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: 'var(--muted)' }}>
+                    PC #
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    max={127}
+                    value={testProgram}
+                    onChange={(e) =>
+                      setTestProgram(parseInt(e.target.value, 10) || 0)
+                    }
+                  />
+                </label>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={fireTestScene}>Fire dLive Scene</button>
+                <button onClick={fireTestPC}>Fire Program Change</button>
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* Manual MIDI fire */}
-        <div className="sim-block">
-          <h3>Send MIDI Manually</h3>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-            <label style={{ flex: 1 }}>
-              <div style={{ fontSize: 10, color: 'var(--muted)' }}>Channel</div>
-              <input
-                type="number"
-                min={1}
-                max={16}
-                value={testCh}
-                onChange={(e) => setTestCh(parseInt(e.target.value, 10) || 1)}
-              />
-            </label>
-            <label style={{ flex: 1 }}>
-              <div style={{ fontSize: 10, color: 'var(--muted)' }}>Scene</div>
-              <input
-                type="number"
-                min={1}
-                max={500}
-                value={testScene}
-                onChange={(e) => setTestScene(parseInt(e.target.value, 10) || 1)}
-              />
-            </label>
-            <label style={{ flex: 1 }}>
-              <div style={{ fontSize: 10, color: 'var(--muted)' }}>PC #</div>
-              <input
-                type="number"
-                min={0}
-                max={127}
-                value={testProgram}
-                onChange={(e) =>
-                  setTestProgram(parseInt(e.target.value, 10) || 0)
-                }
-              />
-            </label>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={fireTestScene}>Fire dLive Scene</button>
-            <button onClick={fireTestPC}>Fire Program Change</button>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   )
 }

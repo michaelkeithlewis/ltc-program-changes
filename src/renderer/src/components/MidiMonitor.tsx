@@ -88,16 +88,22 @@ export function MidiMonitor() {
           ))}
         </select>
         {rxChannels.length > 0 && (
-          <span
-            style={{
-              color: 'var(--warn)',
-              marginLeft: 'auto',
-              fontSize: 10,
+          <button
+            onClick={async () => {
+              await window.api.settings.set({ rxChannels: [] })
             }}
-            title="Incoming messages on other channels are being dropped at the source. Clear the Listen filter in the Input panel to see everything."
+            style={{
+              marginLeft: 'auto',
+              padding: '3px 8px',
+              fontSize: 10,
+              color: 'var(--warn)',
+              borderColor: 'var(--warn)',
+              background: 'transparent',
+            }}
+            title="Clear the incoming-channel filter"
           >
-            RX filter: ch {rxChannels.sort((a, b) => a - b).join(',')}
-          </span>
+            RX filter active · clear
+          </button>
         )}
       </div>
       <div className="panel-body monitor">

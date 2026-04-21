@@ -187,16 +187,17 @@ select:focus {
 .tc-display {
   font-family:
     'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-  font-size: 64px;
+  font-size: 56px;
   font-weight: 600;
   letter-spacing: 0.03em;
   text-align: center;
-  padding: 24px 12px;
+  padding: 20px 12px;
   color: var(--accent);
   background: radial-gradient(ellipse at top, #1a2840 0%, var(--bg-2) 70%);
   border-radius: 10px;
   border: 1px solid var(--border);
   user-select: none;
+  line-height: 1;
 }
 .tc-display.stale {
   color: var(--muted);
@@ -205,7 +206,7 @@ select:focus {
   text-align: center;
   color: var(--muted);
   font-size: 12px;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .field {
@@ -231,42 +232,64 @@ select:focus {
 /* Cue list */
 table.cues {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 13px;
+}
+table.cues thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-2);
+  z-index: 1;
 }
 table.cues th,
 table.cues td {
-  padding: 6px 8px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--border);
   text-align: left;
+  vertical-align: middle;
 }
 table.cues th {
   color: var(--muted);
   font-weight: 500;
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
+}
+table.cues tbody tr {
+  transition: background 0.1s ease;
+}
+table.cues tbody tr:hover {
+  background: rgba(78, 168, 255, 0.04);
 }
 table.cues tr.armed {
   background: rgba(78, 168, 255, 0.08);
 }
 table.cues tr.fired {
-  background: rgba(61, 220, 132, 0.08);
+  background: rgba(61, 220, 132, 0.1);
+  box-shadow: inset 3px 0 0 var(--good);
 }
 table.cues input,
 table.cues select {
   width: 100%;
-  padding: 3px 6px;
+  padding: 5px 8px;
   font-size: 12px;
   background: var(--bg);
+}
+table.cues td.ch-cell input {
+  text-align: center;
+  font-family: ui-monospace, monospace;
+  font-weight: 600;
+  color: var(--accent);
 }
 .cue-actions {
   display: flex;
   gap: 6px;
+  justify-content: flex-end;
 }
 .icon-btn {
-  padding: 3px 8px;
-  font-size: 12px;
+  padding: 4px 10px;
+  font-size: 11px;
 }
 
 /* MIDI monitor */
