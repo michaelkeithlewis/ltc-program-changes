@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../store'
 import {
-  buildDliveSceneRecall,
   buildProgramChange,
   bytesToLabel,
   formatTimecode,
   parseTimecode,
   timecodeToFrames,
 } from '../../../shared/midi'
-import type { DliveSceneCue, ProgramChangeCue } from '../../../shared/types'
+import type { ProgramChangeCue } from '../../../shared/types'
 
 export function Simulator() {
   const settings = useApp((s) => s.settings)
@@ -68,24 +67,8 @@ export function Simulator() {
     setTimecode(tcInput, 'simulator')
   }
 
-  // Manual MIDI test buttons
   const [testCh, setTestCh] = useState(1)
-  const [testScene, setTestScene] = useState(1)
   const [testProgram, setTestProgram] = useState(0)
-
-  async function fireTestScene() {
-    const cue: DliveSceneCue = {
-      id: 'test',
-      type: 'dliveScene',
-      name: `Test scene ${testScene}`,
-      timecode: '',
-      enabled: true,
-      channel: testCh,
-      scene: testScene,
-    }
-    const bytes = buildDliveSceneRecall(cue)
-    await window.api.dlive.sendBytes(bytes, `[test] ${bytesToLabel(bytes)}`)
-  }
 
   async function fireTestPC() {
     const cue: ProgramChangeCue = {
@@ -201,20 +184,6 @@ export function Simulator() {
                 </label>
                 <label style={{ flex: 1 }}>
                   <div style={{ fontSize: 10, color: 'var(--muted)' }}>
-                    Scene
-                  </div>
-                  <input
-                    type="number"
-                    min={1}
-                    max={500}
-                    value={testScene}
-                    onChange={(e) =>
-                      setTestScene(parseInt(e.target.value, 10) || 1)
-                    }
-                  />
-                </label>
-                <label style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10, color: 'var(--muted)' }}>
                     PC #
                   </div>
                   <input
@@ -228,9 +197,14 @@ export function Simulator() {
                   />
                 </label>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={fireTestScene}>Fire dLive Scene</button>
-                <button onClick={fireTestPC}>Fire Program Change</button>
+              <button className="primary" onClick={fireTestPC}>
+                Fire Program Change
+              </button>
+              <div
+                style={{ marginTop: 8, color: 'var(--muted)', fontSize: 11 }}
+              >
+                Sends a MIDI PC to the dLive right now, bypassing cues.
+                PC = scene number − 1 (scene 1 → PC 0).
               </div>
             </div>
           </div>

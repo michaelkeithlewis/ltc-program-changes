@@ -24,7 +24,8 @@ type LegacyShape = {
     /** v0 used WebRTC device ids (hex strings). Dropped on migration. */
     audioInputDeviceId?: string | number
   }
-  cues?: Cue[]
+  /** May include the old `dliveScene` cue shape; migrated on load. */
+  cues?: Array<Cue | LegacySceneCue>
 }
 
 const LATEST_VERSION = 1
@@ -92,6 +93,10 @@ class JsonStore {
       let workspaces = fileLike.workspaces ?? []
       if (workspaces.length === 0) {
         workspaces = [makeWorkspace('Default show')]
+      }
+      for (const w of workspaces) {
+        const cues = (w.cues ?? []) as Array<Cue | LegacySceneCue>
+        w.cues = cues.map(migrateLegacyCue)
       }
       // One-shot clean-up: we used to store a string (WebRTC hex id) for
       // audioInputDeviceId. Any such value is useless under RtAudio.
@@ -335,6 +340,53 @@ class JsonStore {
   }
 }
 
+/**
+ * Convert any pre-existing `dliveScene` cue into the unified `programChange`
+ * shape, preserving the bank + PC bytes. On dLive, scene recall *is* a
+ * banked PC; the UI used to expose both as separate types, which was
+ * confusing. Now there's only one.
+ */
+function migrateLegacyCue(raw: Cue | LegacySceneCue): Cue {
+  if ((raw as LegacySceneCue).type === 'dliveScene') {
+    const sc = raw as LegacySceneCue
+    const scene = Math.max(1, Math.min(500, Math.floor(sc.scene ?? 1)))
+    const idx = scene - 1
+    return {
+      id: sc.id,
+      type: 'programChange',
+      name: sc.name,
+      timecode: sc.timecode,
+      enabled: sc.enabled,
+      channel: sc.channel,
+      program: idx % 128,
+      bankMsb: 0,
+      bankLsb: Math.floor(idx / 128) & 0x7f,
+    }
+  }
+  const c = raw as Cue
+  return {
+    id: c.id,
+    type: 'programChange',
+    name: c.name,
+    timecode: c.timecode,
+    enabled: c.enabled,
+    channel: c.channel,
+    program: typeof c.program === 'number' ? c.program : 0,
+    bankMsb: c.bankMsb,
+    bankLsb: c.bankLsb,
+  }
+}
+
+interface LegacySceneCue {
+  id: string
+  type: 'dliveScene'
+  name: string
+  timecode: string
+  enabled: boolean
+  channel: number
+  scene: number
+}
+
 function isLegacy(obj: unknown): obj is LegacyShape {
   if (!obj || typeof obj !== 'object') return false
   const o = obj as Record<string, unknown>
@@ -344,7 +396,7 @@ function isLegacy(obj: unknown): obj is LegacyShape {
 
 function migrateLegacy(legacy: LegacyShape): FileShape {
   const ws = makeWorkspace('Migrated show')
-  ws.cues = legacy.cues ?? []
+  ws.cues = (legacy.cues ?? []).map(migrateLegacyCue)
   if (legacy.settings?.frameRate)
     ws.frameRate = legacy.settings.frameRate as FileShape['workspaces'][number]['frameRate']
   if (typeof legacy.settings?.preRollMs === 'number')

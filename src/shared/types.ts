@@ -8,30 +8,26 @@ export interface Timecode {
   dropFrame?: boolean
 }
 
-export type CueType = 'programChange' | 'dliveScene'
-
-export interface CueBase {
+/**
+ * A single cue. On dLive, "scene recall" is already a bank-select + PC
+ * triplet, so we only need one cue type: a plain Program Change (+ optional
+ * banking for dLive scenes > 128). Keeping `type: 'programChange'` on the
+ * shape so legacy files that still have it don't break.
+ */
+export interface Cue {
   id: string
+  type: 'programChange'
   name: string
   timecode: string // "HH:MM:SS:FF"
   enabled: boolean
-  channel: number // 1-16 (MIDI channel displayed to user)
-}
-
-export interface ProgramChangeCue extends CueBase {
-  type: 'programChange'
+  channel: number // 1-16
   program: number // 0-127
   bankMsb?: number // optional CC0
   bankLsb?: number // optional CC32
 }
 
-export interface DliveSceneCue extends CueBase {
-  type: 'dliveScene'
-  // dLive scenes 1..500. We'll translate to Bank LSB + Program.
-  scene: number
-}
-
-export type Cue = ProgramChangeCue | DliveSceneCue
+/** Alias kept for backwards compat with helpers outside the UI path. */
+export type ProgramChangeCue = Cue
 
 export interface DliveConnectionConfig {
   host: string

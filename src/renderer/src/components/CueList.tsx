@@ -8,15 +8,15 @@ import {
   timecodeToMs,
 } from '../../../shared/midi'
 
-function newCue(): Cue {
+function newCue(timecode: string, channel: number): Cue {
   return {
     id: `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
-    type: 'dliveScene',
+    type: 'programChange',
     name: 'New cue',
-    timecode: '00:00:00:00',
+    timecode,
     enabled: true,
-    channel: 1,
-    scene: 1,
+    channel,
+    program: 0,
   }
 }
 
@@ -30,14 +30,17 @@ export function CueList() {
   const setLastFired = useApp((s) => s.setLastFired)
   const [dirty, setDirty] = useState(false)
 
-  // Track fired cues in a ref so we don't double-fire.
-  const firedRef = useRef<Set<string>>(new Set())
-  const prevTcMsRef = useRef<number>(-1)
+  /**
+   * Last-known playhead in ms. Cues fire only when the playhead *crosses*
+   * them going forward (prev < trigger <= now), which neatly avoids firing
+   * past cues when they're added mid-session and avoids re-firing on
+   * no-op ticks.
+   */
+  const prevTcMsRef = useRef<number | null>(null)
 
   const fps = settings?.frameRate ?? 30
   const preRollMs = settings?.preRollMs ?? 0
 
-  // Precompute sorted cues with ms.
   const sortedCues = useMemo(() => {
     return [...cues]
       .map((c) => {
@@ -50,41 +53,32 @@ export function CueList() {
       .sort((a, b) => a.ms - b.ms)
   }, [cues, fps])
 
-  // Fire cues when currentTc crosses them.
   useEffect(() => {
     const tc = parseTimecode(currentTc)
     if (!tc) {
-      prevTcMsRef.current = -1
+      prevTcMsRef.current = null
       return
     }
     const nowMs = timecodeToMs(tc, fps)
+    const prev = prevTcMsRef.current
 
-    // If user jumped backward (seek), clear the fired set so cues can
-    // retrigger.
-    if (nowMs < prevTcMsRef.current - 1000) {
-      firedRef.current.clear()
-    }
-
-    for (const { cue, ms } of sortedCues) {
-      if (!cue.enabled) continue
-      if (firedRef.current.has(cue.id)) continue
-      if (ms - preRollMs <= nowMs) {
-        fireCue(cue)
-        firedRef.current.add(cue.id)
-        setLastFired(cue.id)
+    if (prev !== null) {
+      for (const { cue, ms } of sortedCues) {
+        if (!cue.enabled) continue
+        const trigger = ms - preRollMs
+        if (prev < trigger && trigger <= nowMs) {
+          fireCue(cue)
+          setLastFired(cue.id)
+        }
       }
     }
+
     prevTcMsRef.current = nowMs
-    // We deliberately don't depend on lastFiredCueId to avoid re-running.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTc, fps, preRollMs, sortedCues])
 
-  // Clear fired when timecode source becomes idle.
   useEffect(() => {
-    if (tcSource === 'none') {
-      firedRef.current.clear()
-      prevTcMsRef.current = -1
-    }
+    if (tcSource === 'none') prevTcMsRef.current = null
   }, [tcSource])
 
   async function persist(next: Cue[]) {
@@ -95,16 +89,37 @@ export function CueList() {
   }
 
   function update(id: string, patch: Partial<Cue>) {
-    const next = cues.map((c) => (c.id === id ? ({ ...c, ...patch } as Cue) : c))
+    const next = cues.map((c) => (c.id === id ? { ...c, ...patch } : c))
     void persist(next)
   }
 
   function add() {
-    void persist([...cues, newCue()])
+    // Default timecode: the live playhead if there is one, otherwise where
+    // we left off (latest existing cue's TC, nudged one frame), otherwise 0.
+    let seed = currentTc
+    if (!seed) {
+      const latest = [...cues]
+        .map((c) => parseTimecode(c.timecode))
+        .filter((x): x is NonNullable<typeof x> => !!x)
+        .sort(
+          (a, b) =>
+            timecodeToMs(b, fps) - timecodeToMs(a, fps),
+        )[0]
+      if (latest) {
+        seed = `${String(latest.hours).padStart(2, '0')}:${String(latest.minutes).padStart(2, '0')}:${String(latest.seconds + 1).padStart(2, '0')}:00`
+      }
+    }
+    const lastCh = cues[cues.length - 1]?.channel ?? 1
+    const created = newCue(seed || '00:00:00:00', lastCh)
+    void persist([...cues, created])
+  }
+
+  function capture(id: string) {
+    if (!currentTc) return
+    update(id, { timecode: currentTc })
   }
 
   function remove(id: string) {
-    firedRef.current.delete(id)
     void persist(cues.filter((c) => c.id !== id))
   }
 
@@ -114,9 +129,11 @@ export function CueList() {
   }
 
   function resetFired() {
-    firedRef.current.clear()
+    prevTcMsRef.current = null
     setLastFired(null)
   }
+
+  const hasLiveTc = !!parseTimecode(currentTc)
 
   return (
     <div
@@ -143,20 +160,27 @@ export function CueList() {
             fontSize: 11,
           }}
         >
-          {dirty ? 'saving…' : `${cues.length} cue${cues.length === 1 ? '' : 's'} · ${fps} fps`}
+          {dirty
+            ? 'saving…'
+            : `${cues.length} cue${cues.length === 1 ? '' : 's'} · ${fps} fps`}
           <button
             className="primary"
             onClick={add}
             style={{ padding: '4px 10px', fontSize: 11 }}
+            title={
+              hasLiveTc
+                ? `Create a new cue at ${currentTc}`
+                : 'Create a new cue (no live timecode detected yet)'
+            }
           >
-            + Add cue
+            + Add cue{hasLiveTc ? ` @ ${currentTc}` : ''}
           </button>
           <button
             onClick={resetFired}
-            title="Re-arm all cues"
+            title="Re-arm: forget the last playhead position so cues can fire again"
             style={{ padding: '4px 10px', fontSize: 11 }}
           >
-            Reset fired
+            Re-arm
           </button>
         </span>
       </h2>
@@ -165,77 +189,82 @@ export function CueList() {
           <thead>
             <tr>
               <th style={{ width: 36 }}>On</th>
-              <th style={{ width: 110 }}>Timecode</th>
+              <th style={{ width: 140 }}>Timecode</th>
               <th>Name</th>
-              <th style={{ width: 130 }}>Type</th>
               <th style={{ width: 64 }} title="MIDI output channel (1-16)">
                 Out Ch
               </th>
-              <th style={{ width: 90 }}>Value</th>
-              <th style={{ width: 120 }}></th>
+              <th style={{ width: 80 }} title="Program Change number (0-127)">
+                PC #
+              </th>
+              <th style={{ width: 140 }}></th>
             </tr>
           </thead>
           <tbody>
             {cues.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ color: 'var(--muted)', padding: 20, textAlign: 'center' }}>
-                  No cues yet. Click “Add cue” to create your first one.
+                <td
+                  colSpan={6}
+                  style={{
+                    color: 'var(--muted)',
+                    padding: 24,
+                    textAlign: 'center',
+                  }}
+                >
+                  No cues yet. Click <strong>+ Add cue</strong> — if LTC is
+                  decoding, the current timecode is captured automatically.
                 </td>
               </tr>
             )}
             {cues.map((c) => {
-              const isFired = firedRef.current.has(c.id)
               const isArmed = lastFiredCueId === c.id
+              const tcValid = !!parseTimecode(c.timecode)
               return (
-                <tr
-                  key={c.id}
-                  className={isArmed ? 'fired' : isFired ? 'armed' : ''}
-                >
+                <tr key={c.id} className={isArmed ? 'fired' : ''}>
                   <td>
                     <input
                       type="checkbox"
                       checked={c.enabled}
-                      onChange={(e) => update(c.id, { enabled: e.target.checked })}
+                      onChange={(e) =>
+                        update(c.id, { enabled: e.target.checked })
+                      }
                     />
                   </td>
                   <td>
-                    <input
-                      value={c.timecode}
-                      onChange={(e) => update(c.id, { timecode: e.target.value })}
-                      placeholder="00:00:00:00"
-                      style={{
-                        fontFamily: 'ui-monospace, monospace',
-                        color: parseTimecode(c.timecode) ? 'inherit' : 'var(--bad)',
-                      }}
-                    />
+                    <div
+                      style={{ display: 'flex', gap: 4, alignItems: 'center' }}
+                    >
+                      <input
+                        value={c.timecode}
+                        onChange={(e) =>
+                          update(c.id, { timecode: e.target.value })
+                        }
+                        placeholder="00:00:00:00"
+                        style={{
+                          fontFamily: 'ui-monospace, monospace',
+                          color: tcValid ? 'inherit' : 'var(--bad)',
+                        }}
+                      />
+                      <button
+                        className="icon-btn"
+                        onClick={() => capture(c.id)}
+                        disabled={!hasLiveTc}
+                        title={
+                          hasLiveTc
+                            ? `Capture ${currentTc} into this cue`
+                            : 'No live timecode to capture'
+                        }
+                        style={{ flexShrink: 0, padding: '4px 8px' }}
+                      >
+                        ⦿
+                      </button>
+                    </div>
                   </td>
                   <td>
                     <input
                       value={c.name}
                       onChange={(e) => update(c.id, { name: e.target.value })}
                     />
-                  </td>
-                  <td>
-                    <select
-                      value={c.type}
-                      onChange={(e) => {
-                        const t = e.target.value as Cue['type']
-                        if (t === 'dliveScene') {
-                          update(c.id, {
-                            type: 'dliveScene',
-                            scene: (c as Extract<Cue, { type: 'dliveScene' }>).scene ?? 1,
-                          } as Partial<Cue>)
-                        } else {
-                          update(c.id, {
-                            type: 'programChange',
-                            program: 0,
-                          } as Partial<Cue>)
-                        }
-                      }}
-                    >
-                      <option value="dliveScene">dLive Scene</option>
-                      <option value="programChange">Program Change</option>
-                    </select>
                   </td>
                   <td className="ch-cell">
                     <input
@@ -244,39 +273,40 @@ export function CueList() {
                       max={16}
                       value={c.channel}
                       onChange={(e) =>
-                        update(c.id, { channel: parseInt(e.target.value, 10) || 1 })
+                        update(c.id, {
+                          channel: parseInt(e.target.value, 10) || 1,
+                        })
                       }
                       title="MIDI output channel this cue fires on"
                     />
                   </td>
                   <td>
-                    {c.type === 'dliveScene' ? (
-                      <input
-                        type="number"
-                        min={1}
-                        max={500}
-                        value={c.scene}
-                        onChange={(e) =>
-                          update(c.id, { scene: parseInt(e.target.value, 10) || 1 })
-                        }
-                      />
-                    ) : (
-                      <input
-                        type="number"
-                        min={0}
-                        max={127}
-                        value={c.program}
-                        onChange={(e) =>
-                          update(c.id, { program: parseInt(e.target.value, 10) || 0 })
-                        }
-                      />
-                    )}
+                    <input
+                      type="number"
+                      min={0}
+                      max={127}
+                      value={c.program}
+                      onChange={(e) =>
+                        update(c.id, {
+                          program: parseInt(e.target.value, 10) || 0,
+                        })
+                      }
+                      title="Program Change number (0-127). On dLive this is the scene number minus one (scene 1 = PC 0)."
+                    />
                   </td>
                   <td className="cue-actions">
-                    <button className="icon-btn" onClick={() => testFire(c)}>
+                    <button
+                      className="icon-btn"
+                      onClick={() => testFire(c)}
+                      title="Send this cue's MIDI now"
+                    >
                       Fire
                     </button>
-                    <button className="icon-btn danger" onClick={() => remove(c.id)}>
+                    <button
+                      className="icon-btn danger"
+                      onClick={() => remove(c.id)}
+                      title="Delete cue"
+                    >
                       ✕
                     </button>
                   </td>

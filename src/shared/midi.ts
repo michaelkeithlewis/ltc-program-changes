@@ -1,4 +1,4 @@
-import type { Cue, DliveSceneCue, ProgramChangeCue, Timecode } from './types'
+import type { Cue, ProgramChangeCue, Timecode } from './types'
 
 export function clampChannel(ch: number): number {
   if (ch < 1) return 1
@@ -20,27 +20,30 @@ export function buildProgramChange(cue: ProgramChangeCue): number[] {
   return out
 }
 
-/**
- * Allen & Heath dLive scene recall over MIDI:
- *   Bank Select MSB (CC0)  = 0
- *   Bank Select LSB (CC32) = floor((scene-1) / 128)   // 0..3
- *   Program Change        = (scene-1) % 128           // 0..127
- * Valid scenes: 1..500.
- */
-export function buildDliveSceneRecall(cue: DliveSceneCue): number[] {
-  const scene = Math.max(1, Math.min(500, Math.floor(cue.scene)))
-  const idx = scene - 1
-  const bankLsb = Math.floor(idx / 128) & 0x7f
-  const program = idx % 128
-  const cc = 0xb0 | (clampChannel(cue.channel) - 1)
-  const pc = 0xc0 | (clampChannel(cue.channel) - 1)
-  return [cc, 0x00, 0x00, cc, 0x20, bankLsb, pc, program]
+export function buildCueBytes(cue: Cue): number[] {
+  return buildProgramChange(cue)
 }
 
-export function buildCueBytes(cue: Cue): number[] {
-  return cue.type === 'dliveScene'
-    ? buildDliveSceneRecall(cue)
-    : buildProgramChange(cue)
+/**
+ * Convert an Allen & Heath dLive **scene number** (1..500) to its MIDI
+ * representation: Bank Select MSB = 0, Bank Select LSB = floor((s-1)/128),
+ * Program Change = (s-1) % 128. Useful if a production already thinks in
+ * scene numbers; consumer can inline these three fields into a cue.
+ */
+export function sceneToPcFields(scene: number): {
+  channelHint: never | undefined
+  bankMsb: number
+  bankLsb: number
+  program: number
+} {
+  const s = Math.max(1, Math.min(500, Math.floor(scene)))
+  const idx = s - 1
+  return {
+    channelHint: undefined as never | undefined,
+    bankMsb: 0,
+    bankLsb: Math.floor(idx / 128) & 0x7f,
+    program: idx % 128,
+  }
 }
 
 export function bytesToLabel(bytes: number[]): string {
