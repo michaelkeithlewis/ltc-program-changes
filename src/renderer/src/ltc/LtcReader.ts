@@ -4,6 +4,46 @@
 
 const workletUrl = new URL('/ltc-worklet.js', import.meta.url).href
 
+/**
+ * Briefly open a stream on the selected audio device to discover how many
+ * channels it actually exposes. Returns the channel count reported by the
+ * browser's MediaStreamAudioSourceNode (this is the real hardware count, not
+ * what we asked for).
+ *
+ * The stream is torn down immediately — no audio processing happens.
+ */
+export async function probeDeviceChannelCount(
+  deviceId: string | undefined,
+): Promise<number> {
+  let stream: MediaStream | null = null
+  let ctx: AudioContext | null = null
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: deviceId ? { exact: deviceId } : undefined,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: { ideal: 32 },
+      },
+    })
+    ctx = new AudioContext()
+    const src = ctx.createMediaStreamSource(stream)
+    return Math.max(1, src.channelCount)
+  } finally {
+    try {
+      stream?.getTracks().forEach((t) => t.stop())
+    } catch {
+      /* noop */
+    }
+    try {
+      await ctx?.close()
+    } catch {
+      /* noop */
+    }
+  }
+}
+
 export interface LtcReaderEvents {
   onTimecode: (tc: string, df: boolean) => void
   onLevel: (rms: number) => void

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../store'
-import { LtcReader } from '../ltc/LtcReader'
+import { LtcReader, probeDeviceChannelCount } from '../ltc/LtcReader'
 
 export function TimecodeDisplay() {
   const currentTc = useApp((s) => s.currentTc)
@@ -14,11 +14,13 @@ export function TimecodeDisplay() {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [deviceId, setDeviceId] = useState<string>('')
   const [channel, setChannel] = useState<number>(1)
-  const [channelCount, setChannelCount] = useState<number>(1)
+  const [channelCount, setChannelCount] = useState<number>(0)
+  const [probing, setProbing] = useState(false)
   const [listening, setListening] = useState(false)
   const [level, setLevel] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const readerRef = useRef<LtcReader | null>(null)
+  const channelCountCache = useRef<Map<string, number>>(new Map())
   const [, setTick] = useState(0)
 
   // Repaint for the "stale" badge.
@@ -39,6 +41,52 @@ export function TimecodeDisplay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings])
 
+  // Probe the selected device for its real channel count so the grid only
+  // shows the channels that actually exist on the interface. Cached per
+  // deviceId so switching back and forth is instant.
+  useEffect(() => {
+    if (!deviceId) return
+    const cached = channelCountCache.current.get(deviceId)
+    if (cached !== undefined) {
+      setChannelCount(cached)
+      return
+    }
+    // Don't probe while a session is active; the LtcReader will report the
+    // real count itself via onChannelCount.
+    if (listening) return
+
+    let cancelled = false
+    setProbing(true)
+    probeDeviceChannelCount(deviceId)
+      .then((count) => {
+        if (cancelled) return
+        channelCountCache.current.set(deviceId, count)
+        setChannelCount(count)
+      })
+      .catch(() => {
+        if (cancelled) return
+        // Probe failed (permission, device busy, etc.). Fall back to a
+        // generous default so the UI is still usable.
+        setChannelCount(2)
+      })
+      .finally(() => {
+        if (!cancelled) setProbing(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [deviceId, listening])
+
+  // When channel count shrinks below the stored channel, snap back into
+  // range so the UI never shows an invalid selection.
+  useEffect(() => {
+    if (channelCount > 0 && channel > channelCount) {
+      setChannel(1)
+      void window.api.settings.set({ audioInputChannel: 1 }).then(setSettings)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelCount])
+
   // Enumerate audio inputs. Requesting permission once gives us labels.
   useEffect(() => {
     async function enumerate() {
@@ -54,7 +102,12 @@ export function TimecodeDisplay() {
       if (!deviceId && inputs[0]) setDeviceId(inputs[0].deviceId)
     }
     enumerate()
-    const onChange = () => enumerate()
+    const onChange = () => {
+      // Hardware changed — discard cached channel counts since the device
+      // identity may have shifted (common with USB/Thunderbolt reconnects).
+      channelCountCache.current.clear()
+      enumerate()
+    }
     navigator.mediaDevices.addEventListener('devicechange', onChange)
     return () =>
       navigator.mediaDevices.removeEventListener('devicechange', onChange)
@@ -82,7 +135,10 @@ export function TimecodeDisplay() {
       {
         onTimecode: (tc) => setTimecode(tc, 'ltc'),
         onLevel: setLevel,
-        onChannelCount: setChannelCount,
+        onChannelCount: (n) => {
+          setChannelCount(n)
+          if (deviceId) channelCountCache.current.set(deviceId, n)
+        },
         onError: (e) => {
           setError(e.message)
           setListening(false)
@@ -184,51 +240,61 @@ export function TimecodeDisplay() {
         <div className="field">
           <label>
             Input Channel
-            {listening && channelCount > 0 && (
-              <span style={{ color: 'var(--muted)', marginLeft: 8 }}>
-                · {channelCount} channel{channelCount === 1 ? '' : 's'} detected
-              </span>
-            )}
+            <span style={{ color: 'var(--muted)', marginLeft: 8 }}>
+              {probing
+                ? '· detecting…'
+                : channelCount > 0
+                  ? `· ${channelCount} channel${channelCount === 1 ? '' : 's'} on this device`
+                  : ''}
+            </span>
           </label>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(8, 1fr)',
-              gap: 4,
-            }}
-          >
-            {Array.from(
-              { length: Math.max(8, channelCount) },
-              (_, i) => i + 1,
-            ).map((c) => {
-              const unavailable = listening && c > channelCount
-              return (
-                <button
-                  key={c}
-                  onClick={() => changeChannel(c)}
-                  disabled={unavailable}
-                  className={c === channel ? 'primary' : ''}
-                  style={{
-                    padding: '6px 0',
-                    fontSize: 11,
-                    fontFamily: 'ui-monospace, monospace',
-                    opacity: unavailable ? 0.3 : 1,
-                  }}
-                  title={
-                    unavailable
-                      ? `Device only has ${channelCount} channels`
-                      : `Use channel ${c}`
-                  }
-                >
-                  {c}
-                </button>
-              )
-            })}
-          </div>
+          {channelCount === 1 ? (
+            <div
+              style={{
+                padding: '8px 10px',
+                borderRadius: 6,
+                background: 'var(--bg)',
+                border: '1px solid var(--border)',
+                color: 'var(--muted)',
+                fontSize: 12,
+              }}
+            >
+              This device exposes a single mono input — nothing to pick.
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${Math.min(
+                  8,
+                  Math.max(1, channelCount),
+                )}, 1fr)`,
+                gap: 4,
+              }}
+            >
+              {Array.from({ length: channelCount }, (_, i) => i + 1).map(
+                (c) => (
+                  <button
+                    key={c}
+                    onClick={() => changeChannel(c)}
+                    className={c === channel ? 'primary' : ''}
+                    style={{
+                      padding: '6px 0',
+                      fontSize: 11,
+                      fontFamily: 'ui-monospace, monospace',
+                    }}
+                    title={`Use input channel ${c}`}
+                  >
+                    {c}
+                  </button>
+                ),
+              )}
+            </div>
+          )}
           <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 6 }}>
-            Tip: for a multi-channel interface (e.g. MOTU, Focusrite), pick the
-            physical input the LTC feed is on. The selected channel persists
-            per workspace.
+            {channelCount > 1
+              ? 'Pick the physical input carrying your LTC feed. Saved per workspace.'
+              : 'macOS exposes only the channels of the currently selected device. Use Audio MIDI Setup to create an Aggregate Device if you need access to more inputs.'}
           </div>
         </div>
 
