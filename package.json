@@ -24,6 +24,7 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@electron/notarize": "^2.5.0",
     "@types/node": "^22.7.4",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
@@ -67,9 +68,14 @@
           ]
         }
       ],
-      "identity": null,
-      "hardenedRuntime": false,
+      "identity": "Developer ID Application: MICHAEL KEITH LEWIS (824BB5B8RQ)",
+      "hardenedRuntime": true,
       "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": {
+        "teamId": "824BB5B8RQ"
+      },
       "extendInfo": {
         "NSMicrophoneUsageDescription": "This app needs microphone/audio input access to decode SMPTE LTC timecode from your audio interface."
       }
