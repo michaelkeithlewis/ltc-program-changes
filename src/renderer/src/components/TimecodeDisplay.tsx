@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../store'
-import { LtcReader, probeDeviceChannelCount } from '../ltc/LtcReader'
+import type { AudioDeviceInfo, AudioStatus } from '../../../shared/types'
 
 export function TimecodeDisplay() {
   const currentTc = useApp((s) => s.currentTc)
@@ -11,166 +11,140 @@ export function TimecodeDisplay() {
   const settings = useApp((s) => s.settings)
   const setSettings = useApp((s) => s.setSettings)
 
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
-  const [deviceId, setDeviceId] = useState<string>('')
+  const [devices, setDevices] = useState<AudioDeviceInfo[]>([])
+  const [deviceId, setDeviceId] = useState<number | ''>('')
   const [channel, setChannel] = useState<number>(1)
-  const [channelCount, setChannelCount] = useState<number>(0)
-  const [probing, setProbing] = useState(false)
-  const [listening, setListening] = useState(false)
+  const [status, setStatus] = useState<AudioStatus | null>(null)
   const [level, setLevel] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const readerRef = useRef<LtcReader | null>(null)
-  const channelCountCache = useRef<Map<string, number>>(new Map())
+  const [refreshing, setRefreshing] = useState(false)
   const [, setTick] = useState(0)
 
-  // Repaint for the "stale" badge.
+  // Keep the "stale" badge repainting.
   useEffect(() => {
     const i = setInterval(() => setTick((t) => t + 1), 250)
     return () => clearInterval(i)
   }, [])
 
-  // Load persisted device/channel when settings arrive.
+  // Subscribe to main-process events.
   useEffect(() => {
-    if (!settings) return
-    if (settings.audioInputDeviceId && !deviceId) {
-      setDeviceId(settings.audioInputDeviceId)
-    }
-    if (settings.audioInputChannel && channel === 1) {
-      setChannel(settings.audioInputChannel)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings])
-
-  // Probe the selected device for its real channel count so the grid only
-  // shows the channels that actually exist on the interface. Cached per
-  // deviceId so switching back and forth is instant.
-  useEffect(() => {
-    if (!deviceId) return
-    const cached = channelCountCache.current.get(deviceId)
-    if (cached !== undefined) {
-      setChannelCount(cached)
-      return
-    }
-    // Don't probe while a session is active; the LtcReader will report the
-    // real count itself via onChannelCount.
-    if (listening) return
-
-    let cancelled = false
-    setProbing(true)
-    probeDeviceChannelCount(deviceId)
-      .then((count) => {
-        if (cancelled) return
-        channelCountCache.current.set(deviceId, count)
-        setChannelCount(count)
-      })
-      .catch(() => {
-        if (cancelled) return
-        // Probe failed (permission, device busy, etc.). Fall back to a
-        // generous default so the UI is still usable.
-        setChannelCount(2)
-      })
-      .finally(() => {
-        if (!cancelled) setProbing(false)
-      })
+    const offFrame = window.api.onLtcFrame((f) => setTimecode(f.tc, 'ltc'))
+    const offLevel = window.api.onLtcLevel((rms) => setLevel(rms))
+    const offStatus = window.api.onAudioStatus((s) => setStatus(s))
+    void window.api.audio.status().then(setStatus)
     return () => {
-      cancelled = true
+      offFrame()
+      offLevel()
+      offStatus()
     }
-  }, [deviceId, listening])
+  }, [setTimecode])
 
-  // When channel count shrinks below the stored channel, snap back into
-  // range so the UI never shows an invalid selection.
-  useEffect(() => {
-    if (channelCount > 0 && channel > channelCount) {
-      setChannel(1)
-      void window.api.settings.set({ audioInputChannel: 1 }).then(setSettings)
+  const refreshDevices = useRef<() => Promise<void>>(async () => undefined)
+  refreshDevices.current = async () => {
+    setRefreshing(true)
+    try {
+      const list = await window.api.audio.listDevices()
+      setDevices(list)
+    } finally {
+      setRefreshing(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelCount])
-
-  // Enumerate audio inputs. Requesting permission once gives us labels.
-  useEffect(() => {
-    async function enumerate() {
-      try {
-        const tmp = await navigator.mediaDevices.getUserMedia({ audio: true })
-        tmp.getTracks().forEach((t) => t.stop())
-      } catch {
-        /* user will see error on Start Listening */
-      }
-      const list = await navigator.mediaDevices.enumerateDevices()
-      const inputs = list.filter((d) => d.kind === 'audioinput')
-      setDevices(inputs)
-      if (!deviceId && inputs[0]) setDeviceId(inputs[0].deviceId)
-    }
-    enumerate()
-    const onChange = () => {
-      // Hardware changed — discard cached channel counts since the device
-      // identity may have shifted (common with USB/Thunderbolt reconnects).
-      channelCountCache.current.clear()
-      enumerate()
-    }
-    navigator.mediaDevices.addEventListener('devicechange', onChange)
-    return () =>
-      navigator.mediaDevices.removeEventListener('devicechange', onChange)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  async function persistDevice(id: string) {
-    setDeviceId(id)
-    const next = await window.api.settings.set({ audioInputDeviceId: id })
-    setSettings(next)
   }
 
+  // Initial device enumeration.
+  useEffect(() => {
+    void refreshDevices.current()
+  }, [])
+
+  // Apply persisted settings. Resolve by id first; fall back to name match
+  // so drivers that re-number on reboot still line up.
+  useEffect(() => {
+    if (!settings || devices.length === 0) return
+    if (deviceId !== '') return
+
+    const byId = devices.find((d) => d.id === settings.audioInputDeviceId)
+    const byName =
+      !byId && settings.audioInputDeviceName
+        ? devices.find((d) => d.name === settings.audioInputDeviceName)
+        : undefined
+    const picked = byId ?? byName ?? devices.find((d) => d.isDefaultInput) ?? devices[0]
+    if (picked) setDeviceId(picked.id)
+
+    if (settings.audioInputChannel) setChannel(settings.audioInputChannel)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings, devices])
+
+  const selected = useMemo(
+    () => (deviceId === '' ? null : devices.find((d) => d.id === deviceId) ?? null),
+    [devices, deviceId],
+  )
+
+  // Clamp the channel into the selected device's range.
+  useEffect(() => {
+    if (!selected) return
+    if (channel > selected.inputChannels) setChannel(1)
+  }, [selected, channel])
+
+  const listening = !!status?.running
+
+  async function persistDevice(dev: AudioDeviceInfo) {
+    const next = await window.api.settings.set({
+      audioInputDeviceId: dev.id,
+      audioInputDeviceName: dev.name,
+    })
+    setSettings(next)
+  }
   async function persistChannel(c: number) {
-    setChannel(c)
     const next = await window.api.settings.set({ audioInputChannel: c })
     setSettings(next)
   }
 
   async function start() {
+    if (!selected) {
+      setError('Pick an input device first')
+      return
+    }
     setError(null)
-    const reader = new LtcReader()
-    readerRef.current = reader
-    await reader.start(
-      {
-        deviceId: deviceId || undefined,
+    try {
+      const s = await window.api.audio.start({
+        deviceId: selected.id,
         channel,
-        exactChannelCount: channelCount > 0 ? channelCount : undefined,
-      },
-      {
-        onTimecode: (tc) => setTimecode(tc, 'ltc'),
-        onLevel: setLevel,
-        onChannelCount: (n) => {
-          setChannelCount(n)
-          if (deviceId) channelCountCache.current.set(deviceId, n)
-        },
-        onError: (e) => {
-          setError(e.message)
-          setListening(false)
-        },
-      },
-    )
-    setListening(true)
+      })
+      setStatus(s)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
   }
 
   async function stop() {
-    await readerRef.current?.stop()
-    readerRef.current = null
-    setListening(false)
+    try {
+      const s = await window.api.audio.stop()
+      setStatus(s)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
     setLevel(0)
     if (tcSource === 'ltc') clearTimecode()
   }
 
-  // If the user changes device or channel while listening, hot-restart so
-  // the change actually takes effect.
-  async function changeDevice(id: string) {
-    await persistDevice(id)
+  async function changeDevice(id: number) {
+    const dev = devices.find((d) => d.id === id)
+    if (!dev) return
+    setDeviceId(id)
+    await persistDevice(dev)
+    const safeCh = Math.min(channel, dev.inputChannels) || 1
+    if (safeCh !== channel) {
+      setChannel(safeCh)
+      await persistChannel(safeCh)
+    }
     if (listening) {
       await stop()
       await new Promise((r) => setTimeout(r, 50))
       await start()
     }
   }
+
   async function changeChannel(c: number) {
+    setChannel(c)
     await persistChannel(c)
     if (listening) {
       await stop()
@@ -182,9 +156,7 @@ export function TimecodeDisplay() {
   const stale = tcSource === 'ltc' && Date.now() - tcLastAt > 500
   const display = currentTc || '--:--:--:--'
   const levelPct = Math.min(100, Math.round(level * 300))
-  const selectedLabel =
-    devices.find((d) => d.deviceId === deviceId)?.label ||
-    (deviceId ? `Input ${deviceId.slice(0, 6)}` : '—')
+  const selectedLabel = selected?.name ?? '—'
 
   return (
     <div>
@@ -199,7 +171,9 @@ export function TimecodeDisplay() {
               : 'Simulator'}
         </strong>
         {tcSource === 'ltc' && stale && (
-          <span style={{ color: 'var(--warn)', marginLeft: 8 }}>· signal lost</span>
+          <span style={{ color: 'var(--warn)', marginLeft: 8 }}>
+            · signal lost
+          </span>
         )}
       </div>
 
@@ -222,59 +196,57 @@ export function TimecodeDisplay() {
         >
           <strong style={{ fontSize: 13 }}>Timecode Input (LTC)</strong>
           <span style={{ color: 'var(--muted)', fontSize: 11 }}>
-            {listening ? 'Decoding…' : 'Idle'}
+            {listening
+              ? `Decoding · ${status?.sampleRate ?? 0} Hz`
+              : refreshing
+                ? 'Scanning…'
+                : 'Idle'}
           </span>
-        </div>
-
-        <div className="field">
-          <label>Input Device</label>
-          <select
-            value={deviceId}
-            onChange={(e) => changeDevice(e.target.value)}
-          >
-            {devices.length === 0 && <option value="">No inputs found</option>}
-            {devices.map((d) => (
-              <option key={d.deviceId} value={d.deviceId}>
-                {d.label || `Input ${d.deviceId.slice(0, 6)}`}
-              </option>
-            ))}
-          </select>
         </div>
 
         <div className="field">
           <label
             style={{
               display: 'flex',
+              justifyContent: 'space-between',
               alignItems: 'center',
               gap: 8,
-              justifyContent: 'space-between',
             }}
           >
-            <span>
-              Input Channel
-              <span style={{ color: 'var(--muted)', marginLeft: 8 }}>
-                {probing
-                  ? '· detecting…'
-                  : channelCount > 0
-                    ? `· ${channelCount} channel${channelCount === 1 ? '' : 's'} on this device`
-                    : ''}
-              </span>
-            </span>
+            <span>Input Device</span>
             <button
-              onClick={() => {
-                if (!deviceId) return
-                channelCountCache.current.delete(deviceId)
-                // Force the probe effect to re-run.
-                setChannelCount(0)
-              }}
-              disabled={listening || probing || !deviceId}
+              onClick={() => void refreshDevices.current()}
+              disabled={listening || refreshing}
               style={{ padding: '2px 8px', fontSize: 10 }}
-              title="Re-detect channel count (e.g. after changing the device's format in Audio MIDI Setup)"
+              title="Rescan audio devices"
             >
-              Re-probe
+              Rescan
             </button>
           </label>
-          {channelCount === 1 ? (
+          <select
+            value={deviceId === '' ? '' : String(deviceId)}
+            onChange={(e) => changeDevice(Number(e.target.value))}
+          >
+            {devices.length === 0 && <option value="">No inputs found</option>}
+            {devices.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name} · {d.inputChannels} ch
+                {d.isDefaultInput ? ' · default' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="field">
+          <label>
+            Input Channel
+            <span style={{ color: 'var(--muted)', marginLeft: 8 }}>
+              {selected
+                ? `· 1 – ${selected.inputChannels} available`
+                : ''}
+            </span>
+          </label>
+          {selected && selected.inputChannels === 1 ? (
             <div
               style={{
                 padding: '8px 10px',
@@ -288,45 +260,28 @@ export function TimecodeDisplay() {
               This device exposes a single mono input — nothing to pick.
             </div>
           ) : (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: `repeat(${Math.min(
-                  8,
-                  Math.max(1, channelCount),
-                )}, 1fr)`,
-                gap: 4,
-              }}
+            <select
+              value={channel}
+              onChange={(e) => changeChannel(Number(e.target.value))}
+              disabled={!selected}
             >
-              {Array.from({ length: channelCount }, (_, i) => i + 1).map(
-                (c) => (
-                  <button
-                    key={c}
-                    onClick={() => changeChannel(c)}
-                    className={c === channel ? 'primary' : ''}
-                    style={{
-                      padding: '6px 0',
-                      fontSize: 11,
-                      fontFamily: 'ui-monospace, monospace',
-                    }}
-                    title={`Use input channel ${c}`}
-                  >
-                    {c}
-                  </button>
-                ),
-              )}
-            </div>
+              {selected &&
+                Array.from({ length: selected.inputChannels }, (_, i) => i + 1).map(
+                  (c) => (
+                    <option key={c} value={c}>
+                      Channel {c}
+                    </option>
+                  ),
+                )}
+            </select>
           )}
           <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 6 }}>
-            {channelCount > 2
-              ? 'Pick the physical input carrying your LTC feed. Saved per workspace.'
-              : channelCount === 2
-                ? 'Only 2 channels detected. If your interface has more, open macOS Audio MIDI Setup → select the device → set its Input Format to the higher channel count, then click Re-probe.'
-                : 'macOS exposes only the channels of the currently selected device. If you need more, use Audio MIDI Setup to change the device format or create an Aggregate Device.'}
+            Native multi-channel capture via CoreAudio/ASIO — supports any
+            number of inputs (Dante, MADI, aggregates, etc.). Saved per
+            workspace.
           </div>
         </div>
 
-        {/* Level meter */}
         <div
           style={{
             height: 6,
@@ -348,7 +303,7 @@ export function TimecodeDisplay() {
 
         <div style={{ display: 'flex', gap: 8 }}>
           {!listening ? (
-            <button className="primary" onClick={start}>
+            <button className="primary" onClick={start} disabled={!selected}>
               Start Listening
             </button>
           ) : (

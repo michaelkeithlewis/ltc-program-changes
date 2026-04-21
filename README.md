@@ -13,8 +13,11 @@ can verify the link to the mixer at a glance.
 
 ## Features
 
-- **LTC audio decoder** — Web Audio `AudioWorklet` that decodes SMPTE
-  biphase-mark timecode (24 / 25 / 29.97 / 30 fps).
+- **LTC audio decoder** — native multi-channel capture (CoreAudio / WASAPI /
+  ASIO / ALSA via RtAudio) feeding a Node-side biphase-mark decoder for
+  24 / 25 / 29.97 / 30 fps SMPTE LTC. Bypasses the browser's WebRTC stack,
+  so interfaces like Dante Virtual Soundcard expose all their channels
+  (up to 64 in / 64 out).
 - **Cue list** — `HH:MM:SS:FF` → MIDI Program Change (or full dLive Scene
   Recall: Bank MSB + Bank LSB + PC). Auto-persisted.
 - **dLive TCP client** — connects to the dLive MIDI bridge with auto-reconnect

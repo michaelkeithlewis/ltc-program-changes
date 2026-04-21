@@ -17,12 +17,12 @@ interface FileShape {
 }
 
 type LegacyShape = {
-  settings?: Partial<AppSettings> & {
-    // Legacy v0 had these at top-level of settings:
+  settings?: Omit<Partial<AppSettings>, 'audioInputDeviceId'> & {
     frameRate?: number
     preRollMs?: number
     rxChannels?: number[]
-    audioInputDeviceId?: string
+    /** v0 used WebRTC device ids (hex strings). Dropped on migration. */
+    audioInputDeviceId?: string | number
   }
   cues?: Cue[]
 }
@@ -93,6 +93,18 @@ class JsonStore {
       if (workspaces.length === 0) {
         workspaces = [makeWorkspace('Default show')]
       }
+      // One-shot clean-up: we used to store a string (WebRTC hex id) for
+      // audioInputDeviceId. Any such value is useless under RtAudio.
+      for (const w of workspaces) {
+        if (typeof w.audioInputDeviceId !== 'number') {
+          w.audioInputDeviceId = undefined
+          w.audioInputDeviceName = undefined
+        }
+      }
+      if (typeof settings.audioInputDeviceId !== 'number') {
+        settings.audioInputDeviceId = undefined
+        settings.audioInputDeviceName = undefined
+      }
       if (
         !settings.currentWorkspaceId ||
         !workspaces.find((w) => w.id === settings.currentWorkspaceId)
@@ -126,6 +138,7 @@ class JsonStore {
     settings.preRollMs = ws.preRollMs
     settings.rxChannels = ws.rxChannels
     settings.audioInputDeviceId = ws.audioInputDeviceId
+    settings.audioInputDeviceName = ws.audioInputDeviceName
     settings.audioInputChannel = ws.audioInputChannel
   }
 
@@ -182,6 +195,10 @@ class JsonStore {
       }
       if ('audioInputDeviceId' in patch) {
         ws.audioInputDeviceId = patch.audioInputDeviceId
+        touched = true
+      }
+      if ('audioInputDeviceName' in patch) {
+        ws.audioInputDeviceName = patch.audioInputDeviceName
         touched = true
       }
       if ('audioInputChannel' in patch) {
@@ -334,17 +351,17 @@ function migrateLegacy(legacy: LegacyShape): FileShape {
     ws.preRollMs = legacy.settings.preRollMs
   if (Array.isArray(legacy.settings?.rxChannels))
     ws.rxChannels = legacy.settings.rxChannels
-  if (typeof legacy.settings?.audioInputDeviceId === 'string')
-    ws.audioInputDeviceId = legacy.settings.audioInputDeviceId
+  // Legacy WebRTC device ids (hex strings) are not compatible with the new
+  // RtAudio integer ids, so we drop them. User re-selects on first run.
 
+  const legacySettings = legacy.settings ?? {}
   const settings: AppSettings = {
     ...DEFAULT_SETTINGS,
-    ...(legacy.settings ?? {}),
+    dlive: { ...DEFAULT_SETTINGS.dlive, ...(legacySettings.dlive ?? {}) },
     currentWorkspaceId: ws.id,
     frameRate: ws.frameRate,
     preRollMs: ws.preRollMs,
     rxChannels: ws.rxChannels,
-    audioInputDeviceId: ws.audioInputDeviceId,
   }
   return { version: LATEST_VERSION, settings, workspaces: [ws] }
 }

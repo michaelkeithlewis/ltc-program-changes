@@ -13,9 +13,11 @@
     "dist:app": "electron-vite build && electron-builder --mac dir",
     "dist": "electron-vite build && electron-builder --mac dmg",
     "dist:all": "electron-vite build && electron-builder -mwl",
+    "postinstall": "electron-builder install-app-deps",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
   "dependencies": {
+    "audify": "^1.10.1",
     "electron-store": "^10.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -41,13 +43,29 @@
     },
     "files": [
       "out/**/*",
-      "package.json"
+      "package.json",
+      "node_modules/audify/**/*",
+      "node_modules/bindings/**/*",
+      "node_modules/file-uri-to-path/**/*"
     ],
     "asar": true,
+    "asarUnpack": [
+      "node_modules/audify/**/*",
+      "**/*.node",
+      "**/*.dylib",
+      "**/*.dll",
+      "**/*.so*"
+    ],
     "mac": {
       "category": "public.app-category.music",
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "identity": null,
       "hardenedRuntime": false,
@@ -59,8 +77,16 @@
     "dmg": {
       "title": "${productName} ${version}",
       "contents": [
-        { "x": 130, "y": 220 },
-        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
       ]
     },
     "win": {

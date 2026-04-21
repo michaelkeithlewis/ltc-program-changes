@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { DliveClient } from './dlive'
 import { getStore } from './store'
+import { AudioService } from './ltc/audioService'
 import { bytesToLabel } from '../shared/midi'
 import { MidiStreamParser, messageLabel } from '../shared/midiParser'
 import type {
@@ -12,20 +13,10 @@ import type {
   WorkspaceExport,
 } from '../shared/types'
 
-// By default Chromium's WebRTC audio capture path forces every input to
-// stereo, which means getUserMedia() would silently give us 2 channels even
-// on an 8- or 16-input interface. These flags tell Chromium to honour the
-// device's real channel layout and expose it to getUserMedia. Must be set
-// before `app.whenReady()`.
-app.commandLine.appendSwitch('try-supported-channel-layouts')
-app.commandLine.appendSwitch(
-  'enable-features',
-  'WebRtcAllowInputVolumeAdjustment',
-)
-
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
 const dlive = new DliveClient()
+const audio = new AudioService()
 const logBuffer: MidiLogEntry[] = []
 const LOG_CAP = 500
 const parser = new MidiStreamParser()
@@ -136,6 +127,12 @@ app.whenReady().then(() => {
     }
   })
 
+  audio.on('frame', (f) =>
+    sendToRenderer('ltc:frame', { ...f, at: Date.now() }),
+  )
+  audio.on('level', (rms: number) => sendToRenderer('ltc:level', rms))
+  audio.on('status', (s) => sendToRenderer('audio:status', s))
+
   const s = getStore().getSettings()
   if (s.dlive.autoReconnect) dlive.connect(s.dlive)
 
@@ -146,25 +143,29 @@ app.whenReady().then(() => {
   })
 })
 
-app.on('before-quit', () => {
+function shutdown() {
   isQuitting = true
-  // Tear down the TCP socket *before* the window dies so any status event
-  // that fires can still be delivered — and, more importantly, is safely
-  // ignored by sendToRenderer once we're in quitting mode.
   try {
     dlive.disconnect()
   } catch (err) {
     console.error('dlive disconnect failed', err)
   }
+  try {
+    audio.stop()
+  } catch (err) {
+    console.error('audio stop failed', err)
+  }
+}
+
+app.on('before-quit', () => {
+  // Tear down IO *before* the window dies so any status event that fires
+  // can still be delivered — and, more importantly, is safely ignored by
+  // sendToRenderer once we're in quitting mode.
+  shutdown()
 })
 
 app.on('window-all-closed', () => {
-  isQuitting = true
-  try {
-    dlive.disconnect()
-  } catch (err) {
-    console.error('dlive disconnect failed', err)
-  }
+  shutdown()
   if (process.platform !== 'darwin') app.quit()
 })
 
@@ -274,6 +275,27 @@ function registerIpc() {
     shell.openPath(store.getDataDir())
   })
   ipcMain.handle('system:dataPath', () => store.getFilePath())
+
+  // --- Audio / LTC --------------------------------------------------------
+  ipcMain.handle('audio:listDevices', () => audio.listDevices())
+  ipcMain.handle(
+    'audio:start',
+    (_e, opts: { deviceId: number; channel: number }) => {
+      audio.start(opts)
+      const st = audio.getStatus()
+      store.setSettings({
+        audioInputDeviceId: st.deviceId ?? undefined,
+        audioInputDeviceName: st.deviceName ?? undefined,
+        audioInputChannel: st.channel ?? undefined,
+      })
+      return st
+    },
+  )
+  ipcMain.handle('audio:stop', () => {
+    audio.stop()
+    return audio.getStatus()
+  })
+  ipcMain.handle('audio:status', () => audio.getStatus())
 
   // --- Log ----------------------------------------------------------------
   ipcMain.handle('log:recent', () => logBuffer.slice(-200))

@@ -78,7 +78,12 @@ export interface Workspace {
   frameRate: FrameRate
   preRollMs: number
   rxChannels: number[]
-  audioInputDeviceId?: string
+  /**
+   * RtAudio numeric device id. We key by id + name so renamed devices still
+   * resolve across reboots (we fall back to name matching).
+   */
+  audioInputDeviceId?: number
+  audioInputDeviceName?: string
   /** 1-indexed channel on the selected input device. Default 1. */
   audioInputChannel?: number
 }
@@ -112,7 +117,8 @@ export interface WorkspaceExport {
 export interface AppSettings {
   dlive: DliveConnectionConfig
   frameRate: FrameRate
-  audioInputDeviceId?: string
+  audioInputDeviceId?: number
+  audioInputDeviceName?: string
   audioInputChannel?: number
   preRollMs: number
   rxChannels: number[]
@@ -129,6 +135,34 @@ export const DEFAULT_SETTINGS: AppSettings = {
   preRollMs: 0,
   rxChannels: [],
   currentWorkspaceId: '',
+}
+
+// ---------------------------------------------------------------------------
+// Audio / LTC
+// ---------------------------------------------------------------------------
+
+export interface AudioDeviceInfo {
+  id: number
+  name: string
+  inputChannels: number
+  preferredSampleRate: number
+  sampleRates: number[]
+  isDefaultInput: boolean
+}
+
+export interface AudioStatus {
+  running: boolean
+  deviceId: number | null
+  deviceName: string | null
+  channel: number | null
+  channelCount: number | null
+  sampleRate: number | null
+}
+
+export interface LtcFrameEvent {
+  tc: string
+  df: boolean
+  at: number
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +199,12 @@ export interface IpcApi {
     showDataFolder: () => Promise<void>
     dataPath: () => Promise<string>
   }
+  audio: {
+    listDevices: () => Promise<AudioDeviceInfo[]>
+    start: (opts: { deviceId: number; channel: number }) => Promise<AudioStatus>
+    stop: () => Promise<AudioStatus>
+    status: () => Promise<AudioStatus>
+  }
   log: {
     recent: () => Promise<MidiLogEntry[]>
     received: () => Promise<LastReceivedSnapshot>
@@ -173,6 +213,9 @@ export interface IpcApi {
   onMidi: (cb: (e: MidiLogEntry) => void) => () => void
   onReceived: (cb: (s: LastReceivedSnapshot) => void) => () => void
   onWorkspaces: (cb: (list: WorkspaceSummary[]) => void) => () => void
+  onLtcFrame: (cb: (f: LtcFrameEvent) => void) => () => void
+  onLtcLevel: (cb: (rms: number) => void) => () => void
+  onAudioStatus: (cb: (s: AudioStatus) => void) => () => void
 }
 
 declare global {

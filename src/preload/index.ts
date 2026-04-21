@@ -1,11 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppSettings,
+  AudioDeviceInfo,
+  AudioStatus,
   ConnectionStatus,
   Cue,
   DliveConnectionConfig,
   IpcApi,
   LastReceivedSnapshot,
+  LtcFrameEvent,
   MidiLogEntry,
   Workspace,
   WorkspaceSummary,
@@ -57,6 +60,14 @@ const api: IpcApi = {
       ipcRenderer.invoke('system:showDataFolder') as Promise<void>,
     dataPath: () => ipcRenderer.invoke('system:dataPath') as Promise<string>,
   },
+  audio: {
+    listDevices: () =>
+      ipcRenderer.invoke('audio:listDevices') as Promise<AudioDeviceInfo[]>,
+    start: (opts) =>
+      ipcRenderer.invoke('audio:start', opts) as Promise<AudioStatus>,
+    stop: () => ipcRenderer.invoke('audio:stop') as Promise<AudioStatus>,
+    status: () => ipcRenderer.invoke('audio:status') as Promise<AudioStatus>,
+  },
   log: {
     recent: () => ipcRenderer.invoke('log:recent') as Promise<MidiLogEntry[]>,
     received: () =>
@@ -81,6 +92,21 @@ const api: IpcApi = {
     const listener = (_e: unknown, s: WorkspaceSummary[]) => cb(s)
     ipcRenderer.on('workspaces:list', listener)
     return () => ipcRenderer.off('workspaces:list', listener)
+  },
+  onLtcFrame: (cb) => {
+    const listener = (_e: unknown, f: LtcFrameEvent) => cb(f)
+    ipcRenderer.on('ltc:frame', listener)
+    return () => ipcRenderer.off('ltc:frame', listener)
+  },
+  onLtcLevel: (cb) => {
+    const listener = (_e: unknown, rms: number) => cb(rms)
+    ipcRenderer.on('ltc:level', listener)
+    return () => ipcRenderer.off('ltc:level', listener)
+  },
+  onAudioStatus: (cb) => {
+    const listener = (_e: unknown, s: AudioStatus) => cb(s)
+    ipcRenderer.on('audio:status', listener)
+    return () => ipcRenderer.off('audio:status', listener)
   },
 }
 
