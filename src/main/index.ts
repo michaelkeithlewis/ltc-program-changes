@@ -132,6 +132,7 @@ app.whenReady().then(() => {
   )
   audio.on('level', (rms: number) => sendToRenderer('ltc:level', rms))
   audio.on('status', (s) => sendToRenderer('audio:status', s))
+  audio.on('warning', (w) => sendToRenderer('audio:warning', w))
 
   const s = getStore().getSettings()
   if (s.dlive.autoReconnect) dlive.connect(s.dlive)
@@ -296,6 +297,7 @@ function registerIpc() {
     return audio.getStatus()
   })
   ipcMain.handle('audio:status', () => audio.getStatus())
+  ipcMain.handle('audio:resync', () => audio.resync())
 
   // --- Log ----------------------------------------------------------------
   ipcMain.handle('log:recent', () => logBuffer.slice(-200))

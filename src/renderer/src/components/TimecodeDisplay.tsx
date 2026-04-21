@@ -18,6 +18,10 @@ export function TimecodeDisplay() {
   const [level, setLevel] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [warning, setWarning] = useState<{
+    text: string
+    at: number
+  } | null>(null)
   const [, setTick] = useState(0)
 
   // Keep the "stale" badge repainting.
@@ -26,18 +30,28 @@ export function TimecodeDisplay() {
     return () => clearInterval(i)
   }, [])
 
-  // Subscribe to main-process events.
   useEffect(() => {
     const offFrame = window.api.onLtcFrame((f) => setTimecode(f.tc, 'ltc'))
     const offLevel = window.api.onLtcLevel((rms) => setLevel(rms))
     const offStatus = window.api.onAudioStatus((s) => setStatus(s))
+    const offWarn = window.api.onAudioWarning((w) =>
+      setWarning({ text: w.message, at: Date.now() }),
+    )
     void window.api.audio.status().then(setStatus)
     return () => {
       offFrame()
       offLevel()
       offStatus()
+      offWarn()
     }
   }, [setTimecode])
+
+  // Fade stale warnings out after a few seconds.
+  useEffect(() => {
+    if (!warning) return
+    const id = setTimeout(() => setWarning(null), 4000)
+    return () => clearTimeout(id)
+  }, [warning])
 
   const refreshDevices = useRef<() => Promise<void>>(async () => undefined)
   refreshDevices.current = async () => {
@@ -124,6 +138,15 @@ export function TimecodeDisplay() {
     }
     setLevel(0)
     if (tcSource === 'ltc') clearTimecode()
+  }
+
+  async function resync() {
+    try {
+      const s = await window.api.audio.resync()
+      setStatus(s)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
   }
 
   async function changeDevice(id: number) {
@@ -301,17 +324,47 @@ export function TimecodeDisplay() {
           />
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {!listening ? (
             <button className="primary" onClick={start} disabled={!selected}>
               Start Listening
             </button>
           ) : (
-            <button className="danger" onClick={stop}>
-              Stop Listening
-            </button>
+            <>
+              <button className="danger" onClick={stop}>
+                Stop Listening
+              </button>
+              <button
+                onClick={resync}
+                title="Force the LTC decoder to re-acquire lock without stopping the audio stream"
+                style={{ padding: '6px 10px' }}
+              >
+                Resync
+              </button>
+              {(status?.resyncs ?? 0) + (status?.streamRestarts ?? 0) > 0 && (
+                <span
+                  style={{ color: 'var(--muted)', fontSize: 11 }}
+                  title="Automatic recoveries performed since this stream started"
+                >
+                  · auto-recoveries:{' '}
+                  {(status?.resyncs ?? 0) + (status?.streamRestarts ?? 0)}
+                </span>
+              )}
+            </>
           )}
         </div>
+        {warning && (
+          <div
+            style={{
+              color: 'var(--warn)',
+              marginTop: 8,
+              fontSize: 11,
+              opacity: 0.9,
+            }}
+          >
+            {warning.text}
+          </div>
+        )}
         {error && (
           <div style={{ color: 'var(--bad)', marginTop: 8, fontSize: 12 }}>
             {error}

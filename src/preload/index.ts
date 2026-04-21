@@ -67,6 +67,7 @@ const api: IpcApi = {
       ipcRenderer.invoke('audio:start', opts) as Promise<AudioStatus>,
     stop: () => ipcRenderer.invoke('audio:stop') as Promise<AudioStatus>,
     status: () => ipcRenderer.invoke('audio:status') as Promise<AudioStatus>,
+    resync: () => ipcRenderer.invoke('audio:resync') as Promise<AudioStatus>,
   },
   log: {
     recent: () => ipcRenderer.invoke('log:recent') as Promise<MidiLogEntry[]>,
@@ -107,6 +108,14 @@ const api: IpcApi = {
     const listener = (_e: unknown, s: AudioStatus) => cb(s)
     ipcRenderer.on('audio:status', listener)
     return () => ipcRenderer.off('audio:status', listener)
+  },
+  onAudioWarning: (cb) => {
+    const listener = (
+      _e: unknown,
+      w: { kind: string; message: string },
+    ) => cb(w)
+    ipcRenderer.on('audio:warning', listener)
+    return () => ipcRenderer.off('audio:warning', listener)
   },
 }
 

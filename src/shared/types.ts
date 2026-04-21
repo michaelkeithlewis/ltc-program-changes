@@ -153,6 +153,20 @@ export interface AudioStatus {
   channel: number | null
   channelCount: number | null
   sampleRate: number | null
+  /** How many times the decoder has been kicked back into sync by the watchdog. */
+  resyncs?: number
+  /** How many times the underlying RtAudio stream has been rebuilt. */
+  streamRestarts?: number
+}
+
+/** Non-fatal notice from the audio service — useful for surfacing resyncs / recoveries in the UI. */
+export interface AudioWarning {
+  kind:
+    | 'decoder-resynced'
+    | 'stream-stalled'
+    | 'stream-restart-failed'
+    | (string & {})
+  message: string
 }
 
 export interface LtcFrameEvent {
@@ -200,6 +214,7 @@ export interface IpcApi {
     start: (opts: { deviceId: number; channel: number }) => Promise<AudioStatus>
     stop: () => Promise<AudioStatus>
     status: () => Promise<AudioStatus>
+    resync: () => Promise<AudioStatus>
   }
   log: {
     recent: () => Promise<MidiLogEntry[]>
@@ -212,6 +227,7 @@ export interface IpcApi {
   onLtcFrame: (cb: (f: LtcFrameEvent) => void) => () => void
   onLtcLevel: (cb: (rms: number) => void) => () => void
   onAudioStatus: (cb: (s: AudioStatus) => void) => () => void
+  onAudioWarning: (cb: (w: AudioWarning) => void) => () => void
 }
 
 declare global {

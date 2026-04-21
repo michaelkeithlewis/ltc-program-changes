@@ -54,6 +54,30 @@ export class LtcDecoder {
     this.lastEmitAt = 0
   }
 
+  /**
+   * Resync without tearing down DC filter state or the sample clock.
+   * Meant for the watchdog path: we see continuous audio but no sync words,
+   * which usually means the short-bit estimator drifted. Wipe the bit buffer
+   * and force a fresh bootstrap on the next zero crossing.
+   */
+  softReset() {
+    this.shortEst = 0
+    this.shortInitialized = false
+    this.pendingShort = false
+    this.bitBuf = []
+    this.lastEmitAt = 0
+  }
+
+  /** Sample index at which we last emitted a decoded frame (0 if never). */
+  lastFrameSample(): number {
+    return this.lastEmitAt
+  }
+
+  /** Current sample index — useful for watchdog "is it still progressing" checks. */
+  currentSample(): number {
+    return this.sampleCount
+  }
+
   pushSamples(samples: Float32Array | number[], sampleRate: number) {
     const levelInterval = Math.floor(sampleRate / 10)
     for (let i = 0; i < samples.length; i++) {

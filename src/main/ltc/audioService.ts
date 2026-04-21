@@ -23,6 +23,10 @@ export interface AudioStatus {
   channel: number | null // 1-indexed
   channelCount: number | null
   sampleRate: number | null
+  /** Incremented each time the watchdog has to resync the decoder. */
+  resyncs?: number
+  /** Incremented each time the audio stream had to be rebuilt. */
+  streamRestarts?: number
 }
 
 export interface StartOptions {
@@ -41,6 +45,14 @@ export interface StartOptions {
  */
 export class AudioService extends EventEmitter {
   private rt: RtAudio | null = null
+  private decoder: LtcDecoder | null = null
+  private watchdog: NodeJS.Timeout | null = null
+  private lastStartOpts: StartOptions | null = null
+  private lastFrameAt = 0
+  private lastCallbackAt = 0
+  private lastLevel = 0
+  private resyncCount = 0
+  private streamRestarts = 0
   private status: AudioStatus = {
     running: false,
     deviceId: null,
@@ -48,6 +60,8 @@ export class AudioService extends EventEmitter {
     channel: null,
     channelCount: null,
     sampleRate: null,
+    resyncs: 0,
+    streamRestarts: 0,
   }
 
   getStatus(): AudioStatus {
@@ -76,7 +90,12 @@ export class AudioService extends EventEmitter {
 
   start(opts: StartOptions) {
     this.stop()
+    this.lastStartOpts = opts
+    this.openStream(opts)
+    this.startWatchdog()
+  }
 
+  private openStream(opts: StartOptions) {
     const rt = new RtAudio()
     const devices = rt.getDevices()
     const device = devices.find((d) => d.id === opts.deviceId)
@@ -89,20 +108,24 @@ export class AudioService extends EventEmitter {
     const sampleRate =
       device.preferredSampleRate || device.sampleRates[0] || 48000
 
-    // 960 samples @ 48 kHz = 20 ms per callback — snappy enough for TC.
     const bufferFrames = Math.max(256, Math.floor(sampleRate / 50))
 
     const decoder = new LtcDecoder(
-      (frame: DecodedFrame) => this.emit('frame', frame),
-      (rms: number) => this.emit('level', rms),
+      (frame: DecodedFrame) => {
+        this.lastFrameAt = Date.now()
+        this.emit('frame', frame)
+      },
+      (rms: number) => {
+        this.lastLevel = rms
+        this.emit('level', rms)
+      },
     )
 
-    // Scratch buffer reused across callbacks to extract the chosen channel.
     const scratch = new Float32Array(bufferFrames)
     const chIndex = channel - 1
 
     rt.openStream(
-      null, // no output
+      null,
       {
         deviceId: device.id,
         nChannels: channelCount,
@@ -113,7 +136,7 @@ export class AudioService extends EventEmitter {
       bufferFrames,
       'ltc-program-changes',
       (pcm: Buffer) => {
-        // Interleaved Float32. Extract the one channel we care about.
+        this.lastCallbackAt = Date.now()
         const view = new Float32Array(
           pcm.buffer,
           pcm.byteOffset,
@@ -123,16 +146,19 @@ export class AudioService extends EventEmitter {
         for (let i = 0; i < frames; i++) {
           scratch[i] = view[i * channelCount + chIndex]
         }
-        // Note: we only push `frames` real samples even if scratch is larger.
         decoder.pushSamples(scratch.subarray(0, frames), sampleRate)
       },
-      null, // no output callback
+      null,
     )
     rt.start()
 
     this.rt = rt
-    // `decoder` is held alive by the input callback closure.
-    void decoder
+    this.decoder = decoder
+    // Give the watchdog a grace period before it starts second-guessing things.
+    const now = Date.now()
+    this.lastFrameAt = now
+    this.lastCallbackAt = now
+    this.lastLevel = 0
     this.status = {
       running: true,
       deviceId: device.id,
@@ -140,11 +166,124 @@ export class AudioService extends EventEmitter {
       channel,
       channelCount,
       sampleRate,
+      resyncs: this.resyncCount,
+      streamRestarts: this.streamRestarts,
     }
     this.emit('status', this.status)
   }
 
+  /**
+   * Periodic health check. Two failure modes we recover from automatically:
+   *
+   *   1. Decoder drift — audio is flowing and there's actual signal, but
+   *      no valid LTC frame has come out for a while. Happens when the
+   *      short-bit estimator gets nudged out of its tracking range by a
+   *      burst of noise or a tone. Soft-reset the decoder in place so its
+   *      next zero crossing rebootstraps it. No audible disruption.
+   *
+   *   2. Audio callback hang — RtAudio's input callback has gone quiet
+   *      entirely (can happen if the device sample clock disappears, a
+   *      Dante stream drops, or the OS reroutes the default device out
+   *      from under us). Tear the stream down and re-open it.
+   *
+   * Previously the only recovery path was the user manually hitting
+   * Stop → Start, which is exactly what this replaces.
+   */
+  private startWatchdog() {
+    this.stopWatchdog()
+    this.watchdog = setInterval(() => {
+      if (!this.rt || !this.decoder) return
+      const now = Date.now()
+      const sinceCb = now - this.lastCallbackAt
+      const sinceFrame = now - this.lastFrameAt
+
+      if (sinceCb > 3000) {
+        this.streamRestarts += 1
+        this.emit('warning', {
+          kind: 'stream-stalled',
+          message: `Audio callback silent for ${sinceCb}ms — restarting stream`,
+        })
+        this.restartStream()
+        return
+      }
+
+      // Only treat "no frames" as a problem if there's actually signal on
+      // the selected channel. No signal == nothing to decode, not a bug.
+      const hasSignal = this.lastLevel > 0.004
+      if (sinceFrame > 1500 && hasSignal) {
+        this.resyncCount += 1
+        this.decoder.softReset()
+        this.lastFrameAt = now
+        this.status = {
+          ...this.status,
+          resyncs: this.resyncCount,
+        }
+        this.emit('status', this.status)
+        this.emit('warning', {
+          kind: 'decoder-resynced',
+          message: 'LTC decoder lost lock — resynced in place',
+        })
+      }
+    }, 500)
+  }
+
+  private stopWatchdog() {
+    if (this.watchdog) {
+      clearInterval(this.watchdog)
+      this.watchdog = null
+    }
+  }
+
+  private restartStream() {
+    if (!this.lastStartOpts) return
+    const opts = this.lastStartOpts
+    try {
+      if (this.rt) {
+        try {
+          this.rt.stop()
+        } catch {
+          /* noop */
+        }
+        try {
+          this.rt.closeStream()
+        } catch {
+          /* noop */
+        }
+      }
+    } finally {
+      this.rt = null
+      this.decoder = null
+    }
+    try {
+      this.openStream(opts)
+      this.status = {
+        ...this.status,
+        streamRestarts: this.streamRestarts,
+      }
+      this.emit('status', this.status)
+    } catch (e) {
+      this.emit('warning', {
+        kind: 'stream-restart-failed',
+        message: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
+
+  /** Manual knob the UI exposes so users can kick the decoder without a full stop/start. */
+  resync(): AudioStatus {
+    if (this.decoder) {
+      this.resyncCount += 1
+      this.decoder.softReset()
+      this.lastFrameAt = Date.now()
+      this.status = { ...this.status, resyncs: this.resyncCount }
+      this.emit('status', this.status)
+    }
+    return this.status
+  }
+
   stop() {
+    this.stopWatchdog()
+    this.lastStartOpts = null
     if (this.rt) {
       try {
         this.rt.stop()
@@ -158,6 +297,9 @@ export class AudioService extends EventEmitter {
       }
       this.rt = null
     }
+    this.decoder = null
+    this.resyncCount = 0
+    this.streamRestarts = 0
     if (this.status.running) {
       this.status = {
         running: false,
@@ -166,6 +308,8 @@ export class AudioService extends EventEmitter {
         channel: null,
         channelCount: null,
         sampleRate: null,
+        resyncs: 0,
+        streamRestarts: 0,
       }
       this.emit('status', this.status)
     }
