@@ -33,6 +33,30 @@ export interface DliveConnectionConfig {
   host: string
   port: number
   autoReconnect: boolean
+  /**
+   * Optional local IPv4/IPv6 address to bind the outbound TCP socket to.
+   * Used when the control machine has multiple NICs (e.g. Wi-Fi for
+   * internet + a wired NIC on the dLive control VLAN) and the OS routing
+   * table would otherwise pick the wrong one. Empty/undefined = let the
+   * OS choose via the routing table.
+   */
+  localAddress?: string
+}
+
+/**
+ * Lightweight description of a local network interface address, surfaced
+ * to the renderer so the user can pick which NIC to use for dLive control.
+ */
+export interface NetworkInterfaceInfo {
+  /** OS interface name, e.g. `en0`, `eth1`, `Ethernet 2`. */
+  name: string
+  /** IPv4 or IPv6 address currently bound on this interface. */
+  address: string
+  family: 'IPv4' | 'IPv6'
+  /** Subnet mask / prefix in CIDR-style notation, e.g. `255.255.255.0`. */
+  netmask: string
+  mac: string
+  internal: boolean
 }
 
 export type ConnectionStatus =
@@ -210,6 +234,7 @@ export interface IpcApi {
   system: {
     showDataFolder: () => Promise<void>
     dataPath: () => Promise<string>
+    listNetworkInterfaces: () => Promise<NetworkInterfaceInfo[]>
   }
   audio: {
     listDevices: () => Promise<AudioDeviceInfo[]>

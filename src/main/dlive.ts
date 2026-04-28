@@ -52,10 +52,11 @@ export class DliveClient extends EventEmitter {
     }
 
     sock.once('connect', () => {
+      const localPart = sock.localAddress ? ` (via ${sock.localAddress})` : ''
       this.setStatus({
         state: 'connected',
         since: Date.now(),
-        remote: `${this.config.host}:${this.config.port}`,
+        remote: `${this.config.host}:${this.config.port}${localPart}`,
       })
       this.startHeartbeat()
     })
@@ -73,7 +74,26 @@ export class DliveClient extends EventEmitter {
       this.emit('data', Array.from(buf))
     })
 
-    sock.connect(this.config.port, this.config.host)
+    // If the user has pinned the control NIC, bind the outbound socket to
+    // that local IP so the OS routes the session over the correct
+    // interface regardless of routing-table order / metric.
+    const localAddress = this.config.localAddress?.trim()
+    const connectOpts: {
+      host: string
+      port: number
+      localAddress?: string
+      family?: number
+    } = {
+      host: this.config.host,
+      port: this.config.port,
+    }
+    if (localAddress) {
+      connectOpts.localAddress = localAddress
+      // Match address family so the kernel doesn't refuse the bind
+      // (IPv4 local + IPv6 remote or vice versa).
+      connectOpts.family = localAddress.includes(':') ? 6 : 4
+    }
+    sock.connect(connectOpts)
     this.socket = sock
     return this.status
   }

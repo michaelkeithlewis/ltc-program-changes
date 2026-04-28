@@ -10,6 +10,7 @@ import type {
   LastReceivedSnapshot,
   LtcFrameEvent,
   MidiLogEntry,
+  NetworkInterfaceInfo,
   Workspace,
   WorkspaceSummary,
 } from '../shared/types'
@@ -59,6 +60,10 @@ const api: IpcApi = {
     showDataFolder: () =>
       ipcRenderer.invoke('system:showDataFolder') as Promise<void>,
     dataPath: () => ipcRenderer.invoke('system:dataPath') as Promise<string>,
+    listNetworkInterfaces: () =>
+      ipcRenderer.invoke('system:listNetworkInterfaces') as Promise<
+        NetworkInterfaceInfo[]
+      >,
   },
   audio: {
     listDevices: () =>

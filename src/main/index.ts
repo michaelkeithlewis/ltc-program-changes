@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { DliveClient } from './dlive'
 import { getStore } from './store'
@@ -9,6 +10,7 @@ import { MidiStreamParser, messageLabel } from '../shared/midiParser'
 import type {
   LastReceivedSnapshot,
   MidiLogEntry,
+  NetworkInterfaceInfo,
   Workspace,
   WorkspaceExport,
 } from '../shared/types'
@@ -334,6 +336,34 @@ function registerIpc() {
     shell.openPath(store.getDataDir())
   })
   ipcMain.handle('system:dataPath', () => store.getFilePath())
+  ipcMain.handle('system:listNetworkInterfaces', (): NetworkInterfaceInfo[] => {
+    // Flatten os.networkInterfaces() into a stable, renderer-friendly list.
+    // We keep internal (loopback) interfaces off by default since they
+    // cannot reach a physical mixer, but include link-local IPv4s in case
+    // someone is running a tiny zero-config segment to the dLive.
+    const raw = os.networkInterfaces()
+    const out: NetworkInterfaceInfo[] = []
+    for (const [name, addrs] of Object.entries(raw)) {
+      if (!addrs) continue
+      for (const a of addrs) {
+        if (a.internal) continue
+        out.push({
+          name,
+          address: a.address,
+          family: a.family === 'IPv4' ? 'IPv4' : 'IPv6',
+          netmask: a.netmask,
+          mac: a.mac,
+          internal: a.internal,
+        })
+      }
+    }
+    // IPv4 first, then by interface name, for predictable UI ordering.
+    out.sort((a, b) => {
+      if (a.family !== b.family) return a.family === 'IPv4' ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+    return out
+  })
 
   // --- Audio / LTC --------------------------------------------------------
   ipcMain.handle('audio:listDevices', () => audio.listDevices())

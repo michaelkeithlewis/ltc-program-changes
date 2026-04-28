@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../store'
-import type { ConnectionStatus } from '../../../shared/types'
+import type {
+  ConnectionStatus,
+  NetworkInterfaceInfo,
+} from '../../../shared/types'
 
 function statusLabel(s: ConnectionStatus): string {
   switch (s.state) {
@@ -21,20 +24,45 @@ export function ConnectionPanel() {
   const [host, setHost] = useState('')
   const [port, setPort] = useState('51325')
   const [auto, setAuto] = useState(true)
+  const [localAddress, setLocalAddress] = useState('')
+  const [nics, setNics] = useState<NetworkInterfaceInfo[]>([])
 
   useEffect(() => {
     if (settings) {
       setHost(settings.dlive.host)
       setPort(String(settings.dlive.port))
       setAuto(settings.dlive.autoReconnect)
+      setLocalAddress(settings.dlive.localAddress ?? '')
     }
   }, [settings])
+
+  // Refresh the NIC list on mount and every 5s while the panel is open,
+  // so a newly-plugged USB-Ethernet adapter or a DHCP-changed IP shows up
+  // without having to restart the app.
+  useEffect(() => {
+    let cancelled = false
+    const refresh = async () => {
+      try {
+        const list = await window.api.system.listNetworkInterfaces()
+        if (!cancelled) setNics(list)
+      } catch {
+        // Non-fatal; just leave the previous list in place.
+      }
+    }
+    refresh()
+    const t = setInterval(refresh, 5000)
+    return () => {
+      cancelled = true
+      clearInterval(t)
+    }
+  }, [])
 
   async function onConnect() {
     await window.api.dlive.connect({
       host,
       port: parseInt(port, 10) || 51325,
       autoReconnect: auto,
+      localAddress: localAddress || undefined,
     })
   }
 
@@ -81,6 +109,39 @@ export function ConnectionPanel() {
             onChange={(e) => setPort(e.target.value)}
             placeholder="51325"
           />
+        </div>
+        <div className="field">
+          <label>Control NIC</label>
+          <select
+            value={localAddress}
+            onChange={(e) => setLocalAddress(e.target.value)}
+          >
+            <option value="">Automatic (OS routing table)</option>
+            {nics.map((n) => (
+              <option key={`${n.name}-${n.address}`} value={n.address}>
+                {n.name} — {n.address}
+                {n.family === 'IPv6' ? ' (IPv6)' : ''}
+              </option>
+            ))}
+            {localAddress &&
+              !nics.some((n) => n.address === localAddress) && (
+                <option value={localAddress}>
+                  {localAddress} (not currently available)
+                </option>
+              )}
+          </select>
+          <div
+            style={{
+              marginTop: 4,
+              fontSize: 11,
+              color: 'var(--muted)',
+              lineHeight: 1.4,
+            }}
+          >
+            Pin which network interface the control session goes out on.
+            Useful when this machine has both Wi-Fi and a wired NIC on the
+            dLive control VLAN.
+          </div>
         </div>
         <label
           style={{
