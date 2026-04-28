@@ -42,6 +42,14 @@ can verify the link to the mixer at a glance.
    - Click **Connect** — the status pill turns green when the TCP session is
      established.
 
+## Prerequisites
+
+- **Node.js 20+** (22 recommended)
+- A working native-module toolchain for [`audify`](https://github.com/almoghamdani/audify):
+  - **macOS**: Xcode Command Line Tools (`xcode-select --install`)
+  - **Windows**: "Desktop development with C++" workload in Visual Studio Build Tools, Python 3
+  - **Linux**: `build-essential`, `libasound2-dev`, `python3`
+
 ## Running in development
 
 ```bash
@@ -52,12 +60,44 @@ npm run dev
 ## Packaging a standalone app
 
 ```bash
-npm run dist        # produces installers in ./dist
-# or
-npm run package     # unpacked app directory
+npm run dist:mac      # .dmg (universal: arm64 + x64)
+npm run dist:win      # .exe NSIS installer
+npm run dist:linux    # .AppImage
+npm run dist:app      # unpacked .app directory (no installer)
+npm run dist:all      # build for macOS, Windows, and Linux in one shot
 ```
 
-Targets: `.dmg` on macOS, `.exe` (NSIS) on Windows, `.AppImage` on Linux.
+Output lands in `./dist`. Targets: `.dmg` on macOS, `.exe` (NSIS) on Windows,
+`.AppImage` on Linux.
+
+### Code-signing (optional)
+
+By default the committed config builds **unsigned** so anyone can package
+locally without certificates. To produce a signed + notarized macOS build,
+set these env vars before `npm run dist:mac`:
+
+```bash
+export CSC_LINK=/path/to/DeveloperID.p12          # or a base64 data URL
+export CSC_KEY_PASSWORD=...
+export APPLE_ID=you@example.com
+export APPLE_APP_SPECIFIC_PASSWORD=abcd-abcd-abcd-abcd
+export APPLE_TEAM_ID=XXXXXXXXXX
+npx electron-builder --mac dmg -c.mac.notarize=true
+```
+
+The same secrets, wired into GitHub Actions, produce signed installers
+automatically on every tagged release — see
+[`.github/workflows/release.yml`](.github/workflows/release.yml).
+
+## Releasing
+
+```bash
+npm version patch        # or minor / major — bumps package.json + tags
+git push && git push --tags
+```
+
+Pushing a `v*` tag triggers the release workflow, which builds installers
+for macOS, Windows, and Linux and attaches them to a draft GitHub Release.
 
 ## Audio input
 

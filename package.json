@@ -3,14 +3,26 @@
   "version": "0.2.0",
   "description": "Standalone app that fires MIDI Program Changes from LTC timecode, targeted at Allen & Heath dLive via MIDI-over-TCP",
   "main": "out/main/index.js",
-  "author": "",
+  "author": {
+    "name": "Michael Keith Lewis"
+  },
   "license": "MIT",
-  "private": true,
+  "homepage": "https://github.com/michaelkeithlewis/ltc-program-changes#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/michaelkeithlewis/ltc-program-changes.git"
+  },
+  "bugs": {
+    "url": "https://github.com/michaelkeithlewis/ltc-program-changes/issues"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "dist:app": "electron-vite build && electron-builder --mac dir",
+    "dist:mac": "electron-vite build && electron-builder --mac dmg",
+    "dist:win": "electron-vite build && electron-builder --win nsis",
+    "dist:linux": "electron-vite build && electron-builder --linux AppImage",
     "dist": "electron-vite build && electron-builder --mac dmg",
     "dist:all": "electron-vite build && electron-builder -mwl",
     "postinstall": "electron-builder install-app-deps",
@@ -68,7 +80,6 @@
           ]
         }
       ],
-      "identity": "MICHAEL KEITH LEWIS (824BB5B8RQ)",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
@@ -97,7 +108,8 @@
       "target": "nsis"
     },
     "linux": {
-      "target": "AppImage"
+      "target": "AppImage",
+      "category": "AudioVideo"
     }
   }
 }
