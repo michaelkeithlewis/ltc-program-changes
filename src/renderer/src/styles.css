@@ -295,38 +295,159 @@ table.cues tbody tr {
 table.cues tbody tr:hover {
   background: rgba(78, 168, 255, 0.04);
 }
-table.cues tr.armed {
-  background: rgba(78, 168, 255, 0.08);
-}
-table.cues tr.fired {
+
+/* Row states — driven by the TC-relative state machine in cueState.ts.
+ * A thin accent bar on the left edge is the primary signal; a tint on the
+ * row itself is secondary. Using box-shadow + rgba keeps the row height
+ * stable across state transitions. */
+table.cues tr.state-fired {
   background: rgba(61, 220, 132, 0.1);
   box-shadow: inset 3px 0 0 var(--good);
 }
-/* DnD visuals: a 2px accent line above or below the hovered row, plus
- * dimming of the row being dragged. Using inset box-shadow on every cell
- * keeps the indicator unbroken across the row without shifting layout. */
-table.cues tr.dragging > td {
-  opacity: 0.35;
+table.cues tr.state-next {
+  background: rgba(78, 168, 255, 0.1);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
-table.cues tr.drop-before > td {
-  box-shadow: inset 0 2px 0 var(--accent);
+table.cues tr.state-missed {
+  background: rgba(255, 84, 112, 0.08);
+  box-shadow: inset 3px 0 0 var(--bad);
 }
-table.cues tr.drop-after > td {
-  box-shadow: inset 0 -2px 0 var(--accent);
+table.cues tr.state-past > td,
+table.cues tr.state-disabled > td {
+  opacity: 0.5;
 }
+table.cues tr.state-invalid {
+  background: rgba(255, 84, 112, 0.06);
+}
+
+/* Time-conflict: this cue's trigger window overlaps another cue within
+ * pre-roll (or shares its TC when pre-roll = 0). Manual reordering means
+ * the conflict partner isn't necessarily the row above, so we flag every
+ * member of the conflict with a right-edge red bar and a dashed red
+ * underline. */
+table.cues tr.has-conflict > td {
+  box-shadow: inset -3px 0 0 var(--bad);
+}
+table.cues tr.has-conflict.state-next > td {
+  /* Preserve the 'next' accent on the left while showing conflict on right. */
+  box-shadow:
+    inset 3px 0 0 var(--accent),
+    inset -3px 0 0 var(--bad);
+}
+table.cues tr.has-conflict.state-fired > td {
+  box-shadow:
+    inset 3px 0 0 var(--good),
+    inset -3px 0 0 var(--bad);
+}
+table.cues tr.has-conflict.state-missed > td {
+  box-shadow:
+    inset 3px 0 0 var(--bad),
+    inset -3px 0 0 var(--bad);
+}
+
+/* Drag + selection ------------------------------------------------------ */
+
+/* Drag handle column — six-dot glyph, grab cursor, subtle until hovered. */
 table.cues td.drag-handle {
-  cursor: grab;
-  color: var(--muted);
+  width: 22px;
+  padding: 0;
   text-align: center;
+  color: var(--muted);
+  cursor: grab;
   user-select: none;
-  padding: 8px 4px;
   font-size: 14px;
   line-height: 1;
-  letter-spacing: -2px;
+  opacity: 0.5;
+  transition: opacity 0.1s ease;
+}
+table.cues tr:hover td.drag-handle,
+table.cues tr.selected td.drag-handle {
+  opacity: 1;
 }
 table.cues td.drag-handle:active {
   cursor: grabbing;
+}
+table.cues th.drag-handle-head {
+  width: 22px;
+  padding: 0;
+}
+
+/* Selected row — subtle blue tint, separate from the TC state colors. */
+table.cues tr.selected > td {
+  background: rgba(78, 168, 255, 0.12);
+}
+table.cues tr.selected:hover > td {
+  background: rgba(78, 168, 255, 0.16);
+}
+
+/* Row currently being dragged. */
+table.cues tr.dragging > td {
+  opacity: 0.35;
+}
+
+/* Drop position indicators. A 2px accent bar on the edge of the hovered
+ * target row showing whether the drop will land ABOVE or BELOW it. Uses
+ * box-shadow so row height stays stable. */
+table.cues tr.drop-above > td {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+table.cues tr.drop-below > td {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* State badge — small pill in the leading column. Colors mirror the row
+ * edge bar so the two signals agree at a glance. */
+.state-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--bg-3);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  min-width: 52px;
+  text-align: center;
+  line-height: 1.4;
+}
+.state-badge.badge-fired {
+  background: rgba(61, 220, 132, 0.18);
+  color: var(--good);
+  border-color: rgba(61, 220, 132, 0.4);
+}
+.state-badge.badge-next {
+  background: rgba(78, 168, 255, 0.18);
   color: var(--accent);
+  border-color: rgba(78, 168, 255, 0.4);
+}
+.state-badge.badge-armed {
+  background: rgba(78, 168, 255, 0.06);
+  color: var(--accent);
+  border-color: rgba(78, 168, 255, 0.2);
+}
+.state-badge.badge-missed {
+  background: rgba(255, 84, 112, 0.18);
+  color: var(--bad);
+  border-color: rgba(255, 84, 112, 0.4);
+}
+.state-badge.badge-past {
+  background: var(--bg-2);
+  color: var(--muted);
+}
+.state-badge.badge-disabled {
+  background: var(--bg-2);
+  color: var(--muted);
+  opacity: 0.7;
+}
+.state-badge.badge-invalid {
+  background: rgba(255, 84, 112, 0.18);
+  color: var(--bad);
+  border-color: rgba(255, 84, 112, 0.4);
+}
+.state-badge.badge-idle {
+  color: var(--muted);
 }
 table.cues input,
 table.cues select {

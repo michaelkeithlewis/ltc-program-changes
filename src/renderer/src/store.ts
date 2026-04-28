@@ -18,7 +18,17 @@ interface AppState {
   currentTc: string
   tcSource: 'none' | 'ltc' | 'simulator'
   tcLastAt: number
+  /**
+   * Playhead position (ms) when the current playback pass started — i.e. the
+   * first TC frame after a period of no-TC, or the moment the user last hit
+   * Re-arm. Cues with trigger times before this are treated as `past` rather
+   * than `missed`, which is how the UI avoids screaming at the operator
+   * when they join a show mid-way.
+   */
+  tcAnchorMs: number | null
   lastFiredCueId: string | null
+  /** id → epoch-ms of when this cue was fired in the current pass. */
+  firedCueIds: Record<string, number>
 
   setSettings: (s: AppSettings) => void
   setCues: (c: Cue[]) => void
@@ -31,6 +41,12 @@ interface AppState {
   setTimecode: (tc: string, source: 'ltc' | 'simulator') => void
   clearTimecode: () => void
   setLastFired: (id: string | null) => void
+  /** Record a fire event for the given cue and mark it as the last-fired. */
+  markFired: (id: string, at?: number) => void
+  /** Reset all per-pass fire history. Called by the Re-arm button. */
+  clearFiredHistory: () => void
+  /** Manually set the pass anchor (normally managed automatically). */
+  setTcAnchor: (ms: number | null) => void
 }
 
 export const useApp = create<AppState>((set) => ({
@@ -43,7 +59,9 @@ export const useApp = create<AppState>((set) => ({
   currentTc: '',
   tcSource: 'none',
   tcLastAt: 0,
+  tcAnchorMs: null,
   lastFiredCueId: null,
+  firedCueIds: {},
 
   setSettings: (s) => set({ settings: s }),
   setCues: (c) => set({ cues: c }),
@@ -63,6 +81,20 @@ export const useApp = create<AppState>((set) => ({
   setTimecode: (tc, source) =>
     set({ currentTc: tc, tcSource: source, tcLastAt: Date.now() }),
   clearTimecode: () =>
-    set({ currentTc: '', tcSource: 'none', tcLastAt: 0 }),
+    set({
+      currentTc: '',
+      tcSource: 'none',
+      tcLastAt: 0,
+      // Drop the anchor so the next run of TC establishes a fresh one.
+      tcAnchorMs: null,
+    }),
   setLastFired: (id) => set({ lastFiredCueId: id }),
+  markFired: (id, at = Date.now()) =>
+    set((st) => ({
+      lastFiredCueId: id,
+      firedCueIds: { ...st.firedCueIds, [id]: at },
+    })),
+  clearFiredHistory: () =>
+    set({ lastFiredCueId: null, firedCueIds: {} }),
+  setTcAnchor: (ms) => set({ tcAnchorMs: ms }),
 }))
