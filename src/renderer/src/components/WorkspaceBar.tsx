@@ -14,6 +14,8 @@ export function WorkspaceBar() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
   const [newName, setNewName] = useState('')
+  const [appVersion, setAppVersion] = useState<string | null>(null)
+  const [checkingForUpdates, setCheckingForUpdates] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const current = workspaces.find((w) => w.id === settings?.currentWorkspaceId)
@@ -28,6 +30,16 @@ export function WorkspaceBar() {
     document.addEventListener('mousedown', onClick)
     return () => document.removeEventListener('mousedown', onClick)
   }, [menuOpen])
+
+  useEffect(() => {
+    let cancelled = false
+    void window.api.system.appVersion().then((v) => {
+      if (!cancelled) setAppVersion(v)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   async function refresh() {
     const [list, cues, s] = await Promise.all([
@@ -106,6 +118,19 @@ export function WorkspaceBar() {
     await window.api.system.showDataFolder()
   }
 
+  async function checkForUpdates() {
+    setMenuOpen(false)
+    if (checkingForUpdates) return
+    setCheckingForUpdates(true)
+    try {
+      // Main process surfaces the result via native dialogs (available /
+      // up-to-date / error / dev build), so nothing to render here.
+      await window.api.system.checkForUpdates()
+    } finally {
+      setCheckingForUpdates(false)
+    }
+  }
+
   return (
     <div
       style={{
@@ -164,11 +189,34 @@ export function WorkspaceBar() {
             <MenuItem label="Reveal data folder" onClick={openFolder} />
             <Separator />
             <MenuItem
+              label={
+                checkingForUpdates ? 'Checking for updates…' : 'Check for updates…'
+              }
+              onClick={checkForUpdates}
+              disabled={checkingForUpdates}
+            />
+            <Separator />
+            <MenuItem
               label="Delete current…"
               onClick={remove}
               danger
               disabled={workspaces.length <= 1}
             />
+            {appVersion && (
+              <>
+                <Separator />
+                <div
+                  style={{
+                    padding: '4px 10px 2px',
+                    fontSize: 11,
+                    color: 'var(--muted, #888)',
+                    textAlign: 'right',
+                  }}
+                >
+                  v{appVersion}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

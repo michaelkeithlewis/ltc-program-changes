@@ -235,6 +235,8 @@ export interface IpcApi {
     showDataFolder: () => Promise<void>
     dataPath: () => Promise<string>
     listNetworkInterfaces: () => Promise<NetworkInterfaceInfo[]>
+    appVersion: () => Promise<string>
+    checkForUpdates: () => Promise<void>
   }
   audio: {
     listDevices: () => Promise<AudioDeviceInfo[]>

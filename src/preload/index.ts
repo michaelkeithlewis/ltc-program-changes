@@ -64,6 +64,10 @@ const api: IpcApi = {
       ipcRenderer.invoke('system:listNetworkInterfaces') as Promise<
         NetworkInterfaceInfo[]
       >,
+    appVersion: () =>
+      ipcRenderer.invoke('system:appVersion') as Promise<string>,
+    checkForUpdates: () =>
+      ipcRenderer.invoke('system:checkForUpdates') as Promise<void>,
   },
   audio: {
     listDevices: () =>
