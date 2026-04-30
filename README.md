@@ -17,30 +17,25 @@ can verify the link to the mixer at a glance.
 Grab the latest installer for your platform from the
 [**Releases page**](https://github.com/michaelkeithlewis/ltc-program-changes/releases/latest):
 
-| Platform | File                           |
-| -------- | ------------------------------ |
-| macOS    | `LTC Program Changes-*.dmg`    |
-| Windows  | `LTC Program Changes Setup *.exe` |
-| Linux    | `LTC Program Changes-*.AppImage`  |
+| Platform             | File                                    |
+| -------------------- | --------------------------------------- |
+| macOS (Apple silicon) | `LTC Program Changes-*-arm64.dmg`       |
+| macOS (Intel)         | `LTC Program Changes-*.dmg` (x64)       |
+| Windows              | `LTC Program Changes Setup *.exe`       |
+| Linux                | `LTC Program Changes-*.AppImage`        |
 
 The app checks for updates automatically on startup and every few hours, and
 will prompt before downloading a new version.
 
 ### First-launch notes
 
-**macOS** — builds are only signed + notarized when a maintainer has the
-Apple certs configured. An unsigned build will refuse to open with a message
-like *"LTC Program Changes" is damaged and can't be opened*. Fix it once
-after install with:
+**macOS** — the DMG is signed with a Developer ID certificate and notarized
+by Apple, so it opens normally with no Gatekeeper warning. Drag the app to
+Applications and launch it.
 
-```bash
-xattr -cr "/Applications/LTC Program Changes.app"
-```
-
-Then open it normally. macOS will remember the decision.
-
-**Windows** — an unsigned build triggers a SmartScreen warning. Click
-**More info → Run anyway**.
+**Windows** — the installer is currently **unsigned**, so Windows
+SmartScreen will warn *"Windows protected your PC"* on first run. Click
+**More info → Run anyway** to proceed. Subsequent launches don't warn.
 
 **Linux** — make the AppImage executable, then run it:
 

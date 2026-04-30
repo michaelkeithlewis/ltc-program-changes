@@ -72,14 +72,18 @@ jobs:
           # Disable gatekeeper validation during build (runs on CI without keychain).
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CERTIFICATE_P12_BASE64 != '' }}
         run: |
+          # --arm64 --x64 forces electron-builder to produce both arch DMGs,
+          # regardless of the host runner's architecture. Without these flags,
+          # Apple Silicon runners only produce arm64 and Intel Mac users get
+          # no installer.
           if [ -n "$CSC_LINK" ] && [ -n "$APPLE_ID" ]; then
-            echo "Signing + notarizing macOS build"
+            echo "Signing + notarizing macOS build (arm64 + x64)"
             npm run build
-            npx electron-builder --mac dmg -c.mac.notarize=true --publish never
+            npx electron-builder --mac dmg --arm64 --x64 -c.mac.notarize=true --publish never
           else
-            echo "No signing secrets — producing unsigned macOS build"
+            echo "No signing secrets — producing unsigned macOS build (arm64 + x64)"
             npm run build
-            npx electron-builder --mac dmg -c.mac.identity=null --publish never
+            npx electron-builder --mac dmg --arm64 --x64 -c.mac.identity=null --publish never
           fi
 
       - name: Build & package (Windows)
