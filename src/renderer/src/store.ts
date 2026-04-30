@@ -5,8 +5,21 @@ import type {
   Cue,
   LastReceivedSnapshot,
   MidiLogEntry,
+  UpdateEvent,
   WorkspaceSummary,
 } from '../../shared/types'
+
+/**
+ * UI-facing condensation of the auto-updater lifecycle. Only the states the
+ * user can act on or sees feedback for. `idle` collapses both "we haven't
+ * checked yet" and "checked, nothing new" — the renderer treats them the
+ * same: render nothing.
+ */
+export type UpdateUiState =
+  | { kind: 'idle' }
+  | { kind: 'downloading'; version: string; percent: number; transferred: number; total: number; bytesPerSecond: number }
+  | { kind: 'downloaded'; version: string }
+  | { kind: 'error'; message: string }
 
 interface AppState {
   settings: AppSettings | null
@@ -40,6 +53,11 @@ interface AppState {
    * brightly lit FOH or rehearsal rooms have asked for a light option.
    */
   theme: 'dark' | 'light'
+  /**
+   * Auto-update lifecycle state for the in-app banner. Driven by IPC events
+   * from the main process; not persisted (each session resets to idle).
+   */
+  updateUi: UpdateUiState
 
   setSettings: (s: AppSettings) => void
   setCues: (c: Cue[]) => void
@@ -60,6 +78,10 @@ interface AppState {
   setTcAnchor: (ms: number | null) => void
   setMonitorVisible: (v: boolean) => void
   setTheme: (t: 'dark' | 'light') => void
+  /** Apply an UpdateEvent from main to the UI state. */
+  applyUpdateEvent: (e: UpdateEvent) => void
+  /** Manually clear the banner (e.g. dismiss after error). */
+  clearUpdateUi: () => void
 }
 
 const MONITOR_VISIBLE_KEY = 'ui.monitorVisible'
@@ -113,6 +135,7 @@ export const useApp = create<AppState>((set) => ({
   firedCueIds: {},
   monitorVisible: readMonitorVisible(),
   theme: readTheme(),
+  updateUi: { kind: 'idle' },
 
   setSettings: (s) => set({ settings: s }),
   setCues: (c) => set({ cues: c }),
@@ -156,4 +179,44 @@ export const useApp = create<AppState>((set) => ({
     writeTheme(t)
     set({ theme: t })
   },
+  applyUpdateEvent: (e) =>
+    set((st) => {
+      switch (e.kind) {
+        case 'available':
+        case 'dismissed':
+          // The native dialog handles "available". `dismissed` collapses
+          // back to idle (banner only appears once download starts).
+          return { updateUi: { kind: 'idle' } }
+        case 'downloading':
+          return {
+            updateUi: {
+              kind: 'downloading',
+              version: e.version,
+              percent: 0,
+              transferred: 0,
+              total: 0,
+              bytesPerSecond: 0,
+            },
+          }
+        case 'progress':
+          return {
+            updateUi: {
+              kind: 'downloading',
+              version: e.version,
+              percent: e.percent,
+              transferred: e.transferred,
+              total: e.total,
+              bytesPerSecond: e.bytesPerSecond,
+            },
+          }
+        case 'downloaded':
+          return { updateUi: { kind: 'downloaded', version: e.version } }
+        case 'error':
+          // Don't replace a "downloaded" state with an error if one comes
+          // through late — the user already has a usable update ready.
+          if (st.updateUi.kind === 'downloaded') return {}
+          return { updateUi: { kind: 'error', message: e.message } }
+      }
+    }),
+  clearUpdateUi: () => set({ updateUi: { kind: 'idle' } }),
 }))

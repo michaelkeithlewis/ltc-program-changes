@@ -6,6 +6,7 @@ import { CueList } from './components/CueList'
 import { MidiMonitor } from './components/MidiMonitor'
 import { Simulator } from './components/Simulator'
 import { WorkspaceBar } from './components/WorkspaceBar'
+import { UpdateBanner } from './components/UpdateBanner'
 import truckPackerLogo from './assets/truckpacker-logo.png'
 import type { AppSettings } from '../../shared/types'
 
@@ -36,11 +37,16 @@ export function App() {
     setMonitorVisible,
     theme,
     setTheme,
+    applyUpdateEvent,
   } = useApp()
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    return window.api.onUpdateEvent(applyUpdateEvent)
+  }, [applyUpdateEvent])
 
   const [appVersion, setAppVersion] = useState<string | null>(null)
   useEffect(() => {
@@ -217,6 +223,8 @@ export function App() {
           />
           <span style={{ color: 'var(--muted)', fontSize: 10.5 }}>ms</span>
         </label>
+
+        <UpdateBanner />
 
         <button
           type="button"

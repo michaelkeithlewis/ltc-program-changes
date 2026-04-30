@@ -1,5 +1,10 @@
 import { app, BrowserWindow, dialog } from 'electron'
-import { autoUpdater, type UpdateInfo } from 'electron-updater'
+import {
+  autoUpdater,
+  type ProgressInfo,
+  type UpdateInfo,
+} from 'electron-updater'
+import type { UpdateEvent } from '../shared/types'
 
 /**
  * Sets up the auto-update flow.
@@ -23,6 +28,30 @@ let initialized = false
 // True only while a user-initiated check is awaiting an outcome event.
 // Used to gate the "up to date" / error dialogs so background polls stay quiet.
 let manualCheckInFlight = false
+// Set once update-downloaded fires, so a renderer-side "Restart now" button
+// can request quitAndInstall without us having to track the original info.
+let updateReady = false
+// Version string for the update currently being downloaded, captured from
+// `update-available`. The progress events don't carry the version, so we
+// keep it on the side to forward to the renderer.
+let inFlightVersion: string | null = null
+
+function emitUpdate(event: UpdateEvent) {
+  const w = mainWindowRef
+  if (!w || w.isDestroyed()) return
+  w.webContents.send('updates:event', event)
+}
+
+function setDockProgress(percentZeroToOne: number) {
+  const w = mainWindowRef
+  if (!w || w.isDestroyed()) return
+  // -1 hides the progress bar (per Electron docs). Clamp anything weird.
+  if (percentZeroToOne < 0 || percentZeroToOne > 1) {
+    w.setProgressBar(-1)
+    return
+  }
+  w.setProgressBar(percentZeroToOne)
+}
 
 function getDialogParent(): BrowserWindow | undefined {
   const w = mainWindowRef
@@ -56,6 +85,8 @@ export function initAutoUpdate(mainWindow: BrowserWindow | null) {
 
   autoUpdater.on('error', (err) => {
     console.error('[autoUpdate]', err)
+    setDockProgress(-1)
+    emitUpdate({ kind: 'error', message: err?.message ?? String(err) })
     if (manualCheckInFlight) {
       manualCheckInFlight = false
       void showError({
@@ -68,16 +99,25 @@ export function initAutoUpdate(mainWindow: BrowserWindow | null) {
 
   autoUpdater.on('update-available', async (info: UpdateInfo) => {
     manualCheckInFlight = false
+    inFlightVersion = info.version
+    emitUpdate({ kind: 'available', version: info.version })
     const res = await showInfo({
       buttons: ['Download', 'Later'],
       defaultId: 0,
       cancelId: 1,
       title: 'Update available',
       message: `LTC Program Changes ${info.version} is available.`,
-      detail: 'Download now? The update will install the next time you quit the app.',
+      detail:
+        'Download now? You can keep working — progress will appear in the status bar, and the update installs the next time you quit the app.',
     })
     if (res.response === 0) {
+      // Tell the renderer we're starting; the first progress event may take a
+      // moment to arrive (HTTP handshake, CDN), so this lets us show a
+      // determinate-ish "Starting download…" state rather than a frozen UI.
+      emitUpdate({ kind: 'downloading', version: info.version })
       void autoUpdater.downloadUpdate()
+    } else {
+      emitUpdate({ kind: 'dismissed' })
     }
   })
 
@@ -90,14 +130,30 @@ export function initAutoUpdate(mainWindow: BrowserWindow | null) {
     })
   })
 
+  autoUpdater.on('download-progress', (p: ProgressInfo) => {
+    setDockProgress(Math.max(0, Math.min(1, (p.percent ?? 0) / 100)))
+    emitUpdate({
+      kind: 'progress',
+      version: inFlightVersion ?? '',
+      percent: p.percent ?? 0,
+      transferred: p.transferred ?? 0,
+      total: p.total ?? 0,
+      bytesPerSecond: p.bytesPerSecond ?? 0,
+    })
+  })
+
   autoUpdater.on('update-downloaded', async (info: UpdateInfo) => {
+    updateReady = true
+    setDockProgress(-1)
+    emitUpdate({ kind: 'downloaded', version: info.version })
     const res = await showInfo({
       buttons: ['Restart now', 'Later'],
       defaultId: 0,
       cancelId: 1,
       title: 'Update ready',
       message: `LTC Program Changes ${info.version} has been downloaded.`,
-      detail: 'Restart the app to apply the update.',
+      detail:
+        'Restart the app to apply the update. You can also tap "Restart now" in the status bar at any time.',
     })
     if (res.response === 0) {
       autoUpdater.quitAndInstall()
@@ -146,4 +202,14 @@ export async function checkForUpdatesNow(): Promise<void> {
     // log here for completeness in case the event doesn't fire.
     console.error('[autoUpdate] manual check failed', err)
   }
+}
+
+/**
+ * Renderer-triggered "Restart now" — only acts if a download has completed.
+ * Otherwise no-ops so a stale or accidental call can't bring the app down
+ * with no replacement to install.
+ */
+export function installUpdateNow(): void {
+  if (!updateReady) return
+  autoUpdater.quitAndInstall()
 }

@@ -237,6 +237,11 @@ export interface IpcApi {
     listNetworkInterfaces: () => Promise<NetworkInterfaceInfo[]>
     appVersion: () => Promise<string>
     checkForUpdates: () => Promise<void>
+    /**
+     * Restart the app and apply a pending update. Safe to call only when an
+     * `update-downloaded` event has been observed; otherwise no-ops.
+     */
+    installUpdate: () => Promise<void>
   }
   audio: {
     listDevices: () => Promise<AudioDeviceInfo[]>
@@ -258,7 +263,29 @@ export interface IpcApi {
   onLtcLevel: (cb: (rms: number) => void) => () => void
   onAudioStatus: (cb: (s: AudioStatus) => void) => () => void
   onAudioWarning: (cb: (w: AudioWarning) => void) => () => void
+  onUpdateEvent: (cb: (e: UpdateEvent) => void) => () => void
 }
+
+/**
+ * Lifecycle events broadcast from the auto-updater in the main process to
+ * the renderer so the UI can show progress feedback. The shape mirrors the
+ * states electron-updater itself reports, plus a synthetic `dismissed`
+ * emitted when the user declines the "Download" prompt.
+ */
+export type UpdateEvent =
+  | { kind: 'available'; version: string }
+  | { kind: 'dismissed' }
+  | { kind: 'downloading'; version: string }
+  | {
+      kind: 'progress'
+      version: string
+      percent: number          /* 0..100 */
+      transferred: number      /* bytes */
+      total: number            /* bytes */
+      bytesPerSecond: number
+    }
+  | { kind: 'downloaded'; version: string }
+  | { kind: 'error'; message: string }
 
 declare global {
   interface Window {

@@ -1371,6 +1371,212 @@ button.icon-btn:focus-visible {
   opacity: 0.85;
 }
 
+/* Update progress banner ------------------------------------------------- *
+ * Lives inline in the status bar; renders nothing while idle, so its
+ * presence in the DOM doesn't push other elements around. When active it
+ * gets a faint pill background and a slim progress bar. */
+.statusbar .update-banner {
+  margin-left: auto;          /* shoves itself + everything after it right */
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1;
+  max-width: 360px;
+}
+.statusbar .update-banner + .theme-toggle {
+  /* Banner already took margin-left: auto, so reset the toggle's claim
+   * on it — they should sit next to each other with the standard gap. */
+  margin-left: 0;
+}
+.statusbar .update-banner.is-downloading {
+  border-color: rgba(93, 220, 255, 0.32);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(93, 220, 255, 0.05),
+      transparent
+    ),
+    var(--bg-0);
+}
+.statusbar .update-banner.is-downloaded {
+  border-color: rgba(75, 231, 163, 0.45);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(75, 231, 163, 0.08),
+      transparent
+    ),
+    var(--bg-0);
+  color: var(--text);
+}
+.statusbar .update-banner.is-error {
+  border-color: rgba(255, 107, 133, 0.45);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 107, 133, 0.08),
+      transparent
+    ),
+    var(--bg-0);
+  color: var(--text);
+}
+.statusbar .update-banner .ub-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--accent);
+}
+.statusbar .update-banner .ub-icon-good { color: var(--good); }
+.statusbar .update-banner .ub-icon-bad  { color: var(--bad); }
+.statusbar .update-banner .ub-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.statusbar .update-banner .ub-label strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.statusbar .update-banner .ub-num,
+.statusbar .update-banner .ub-rate {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.statusbar .update-banner .ub-detail {
+  color: var(--muted);
+}
+
+/* Slim progress bar — sits inline next to the label so the whole banner
+ * is one continuous strip rather than two stacked rows. */
+.statusbar .update-banner .ub-bar {
+  position: relative;
+  display: inline-block;
+  width: 80px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(93, 220, 255, 0.12);
+  overflow: hidden;
+}
+.statusbar .update-banner .ub-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: linear-gradient(
+    90deg,
+    var(--accent),
+    var(--accent-2)
+  );
+  border-radius: 999px;
+  transition: width 200ms ease;
+  box-shadow: 0 0 6px rgba(93, 220, 255, 0.5);
+}
+.statusbar .update-banner .ub-bar-fill.is-indeterminate {
+  width: 35% !important;
+  animation: ub-indet 1.2s ease-in-out infinite;
+}
+@keyframes ub-indet {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(310%); }
+}
+
+/* Action + dismiss buttons inside the banner. */
+.statusbar .update-banner .ub-action {
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--r-pill);
+  background: var(--good);
+  color: #04201a;
+  border: 1px solid transparent;
+  cursor: pointer;
+  box-shadow: 0 0 0 0 rgba(75, 231, 163, 0);
+  transition: background 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+.statusbar .update-banner .ub-action:hover {
+  background: #5fefb0;
+  box-shadow: 0 0 12px rgba(75, 231, 163, 0.45);
+}
+.statusbar .update-banner .ub-action:active {
+  transform: translateY(0.5px);
+}
+.statusbar .update-banner .ub-dismiss {
+  padding: 0 4px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  box-shadow: none;
+}
+.statusbar .update-banner .ub-dismiss:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Light-theme tints for the banner — the dark-mode rgba alphas read as
+ * harsh tinted blocks on a paper surface. */
+:root[data-theme='light'] .statusbar .update-banner {
+  background: var(--bg-0);
+}
+:root[data-theme='light'] .statusbar .update-banner.is-downloading {
+  border-color: rgba(0, 145, 184, 0.40);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(0, 145, 184, 0.05),
+      transparent
+    ),
+    var(--bg-0);
+}
+:root[data-theme='light'] .statusbar .update-banner.is-downloaded {
+  border-color: rgba(26, 156, 102, 0.50);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(26, 156, 102, 0.08),
+      transparent
+    ),
+    var(--bg-0);
+}
+:root[data-theme='light'] .statusbar .update-banner.is-error {
+  border-color: rgba(207, 46, 84, 0.50);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(207, 46, 84, 0.08),
+      transparent
+    ),
+    var(--bg-0);
+}
+:root[data-theme='light'] .statusbar .update-banner .ub-bar {
+  background: rgba(0, 145, 184, 0.16);
+}
+:root[data-theme='light'] .statusbar .update-banner .ub-bar-fill {
+  box-shadow: 0 0 4px rgba(0, 145, 184, 0.45);
+}
+:root[data-theme='light'] .statusbar .update-banner .ub-action {
+  color: #ffffff;
+  background: var(--good);
+}
+:root[data-theme='light'] .statusbar .update-banner .ub-action:hover {
+  background: #1cb077;
+}
+:root[data-theme='light'] .statusbar .update-banner .ub-dismiss:hover {
+  background: rgba(20, 24, 31, 0.06);
+}
+
 /* Theme toggle (sun/moon) ----------------------------------------------- */
 .statusbar .theme-toggle {
   margin-left: auto;          /* anchors the right-hand group */

@@ -5,7 +5,11 @@ import path from 'node:path'
 import { DliveClient } from './dlive'
 import { getStore } from './store'
 import { AudioService } from './ltc/audioService'
-import { checkForUpdatesNow, initAutoUpdate } from './autoUpdate'
+import {
+  checkForUpdatesNow,
+  initAutoUpdate,
+  installUpdateNow,
+} from './autoUpdate'
 import { bytesToLabel } from '../shared/midi'
 import { MidiStreamParser, messageLabel } from '../shared/midiParser'
 import type {
@@ -341,6 +345,7 @@ function registerIpc() {
   ipcMain.handle('system:dataPath', () => store.getFilePath())
   ipcMain.handle('system:appVersion', () => app.getVersion())
   ipcMain.handle('system:checkForUpdates', () => checkForUpdatesNow())
+  ipcMain.handle('system:installUpdate', () => installUpdateNow())
   ipcMain.handle('system:listNetworkInterfaces', (): NetworkInterfaceInfo[] => {
     // Flatten os.networkInterfaces() into a stable, renderer-friendly list.
     // We keep internal (loopback) interfaces off by default since they

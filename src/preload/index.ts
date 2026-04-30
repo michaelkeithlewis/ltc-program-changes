@@ -11,6 +11,7 @@ import type {
   LtcFrameEvent,
   MidiLogEntry,
   NetworkInterfaceInfo,
+  UpdateEvent,
   Workspace,
   WorkspaceSummary,
 } from '../shared/types'
@@ -68,6 +69,8 @@ const api: IpcApi = {
       ipcRenderer.invoke('system:appVersion') as Promise<string>,
     checkForUpdates: () =>
       ipcRenderer.invoke('system:checkForUpdates') as Promise<void>,
+    installUpdate: () =>
+      ipcRenderer.invoke('system:installUpdate') as Promise<void>,
   },
   audio: {
     listDevices: () =>
@@ -130,6 +133,11 @@ const api: IpcApi = {
     ) => cb(w)
     ipcRenderer.on('audio:warning', listener)
     return () => ipcRenderer.off('audio:warning', listener)
+  },
+  onUpdateEvent: (cb) => {
+    const listener = (_e: unknown, ev: UpdateEvent) => cb(ev)
+    ipcRenderer.on('updates:event', listener)
+    return () => ipcRenderer.off('updates:event', listener)
   },
 }
 
