@@ -264,6 +264,12 @@ select:focus {
 /* Cue list */
 table.cues {
   width: 100%;
+  /* Fixed layout: column widths strictly follow the declared widths in the
+   * <thead>, regardless of cell content. Without this, auto layout can
+   * inflate the PC # / Ch columns past their 80 / 72px headers because the
+   * number inputs have large intrinsic widths, which in turn shifts the
+   * right edge of those inputs row-to-row and misaligns the Fire column. */
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 13px;
