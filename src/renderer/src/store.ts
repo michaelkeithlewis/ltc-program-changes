@@ -34,6 +34,12 @@ interface AppState {
    * localStorage so the user's choice survives reloads. Default: visible.
    */
   monitorVisible: boolean
+  /**
+   * Active UI theme. Persisted to localStorage. Default: dark — the app's
+   * always been a dark broadcast/show-control surface, but operators in
+   * brightly lit FOH or rehearsal rooms have asked for a light option.
+   */
+  theme: 'dark' | 'light'
 
   setSettings: (s: AppSettings) => void
   setCues: (c: Cue[]) => void
@@ -53,6 +59,7 @@ interface AppState {
   /** Manually set the pass anchor (normally managed automatically). */
   setTcAnchor: (ms: number | null) => void
   setMonitorVisible: (v: boolean) => void
+  setTheme: (t: 'dark' | 'light') => void
 }
 
 const MONITOR_VISIBLE_KEY = 'ui.monitorVisible'
@@ -73,6 +80,24 @@ function writeMonitorVisible(v: boolean) {
   }
 }
 
+const THEME_KEY = 'ui.theme'
+function readTheme(): 'dark' | 'light' {
+  if (typeof window === 'undefined') return 'dark'
+  try {
+    const raw = window.localStorage.getItem(THEME_KEY)
+    return raw === 'light' ? 'light' : 'dark'
+  } catch {
+    return 'dark'
+  }
+}
+function writeTheme(t: 'dark' | 'light') {
+  try {
+    window.localStorage.setItem(THEME_KEY, t)
+  } catch {
+    // non-fatal
+  }
+}
+
 export const useApp = create<AppState>((set) => ({
   settings: null,
   cues: [],
@@ -87,6 +112,7 @@ export const useApp = create<AppState>((set) => ({
   lastFiredCueId: null,
   firedCueIds: {},
   monitorVisible: readMonitorVisible(),
+  theme: readTheme(),
 
   setSettings: (s) => set({ settings: s }),
   setCues: (c) => set({ cues: c }),
@@ -125,5 +151,9 @@ export const useApp = create<AppState>((set) => ({
   setMonitorVisible: (v) => {
     writeMonitorVisible(v)
     set({ monitorVisible: v })
+  },
+  setTheme: (t) => {
+    writeTheme(t)
+    set({ theme: t })
   },
 }))

@@ -34,7 +34,13 @@ export function App() {
     settings,
     monitorVisible,
     setMonitorVisible,
+    theme,
+    setTheme,
   } = useApp()
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+  }, [theme])
 
   const [appVersion, setAppVersion] = useState<string | null>(null)
   useEffect(() => {
@@ -211,6 +217,21 @@ export function App() {
           />
           <span style={{ color: 'var(--muted)', fontSize: 10.5 }}>ms</span>
         </label>
+
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          title={
+            theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+          }
+          aria-label={
+            theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+          }
+          aria-pressed={theme === 'light'}
+        >
+          {theme === 'dark' ? '☀' : '☾'}
+        </button>
 
         <a
           className="tp-credit"

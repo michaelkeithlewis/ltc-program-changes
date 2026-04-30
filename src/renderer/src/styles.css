@@ -68,6 +68,133 @@
   color-scheme: dark;
 }
 
+/* =========================================================================
+ * Light theme overrides
+ * ---------------------------------------------------------------------------
+ * Activated via [data-theme="light"] on <html>. Goal: a calm, paper-toned
+ * surface that stays readable in brightly lit FOH/rehearsal rooms while
+ * preserving the same accent identity (cyan hero / amber inbound).
+ *
+ * The token names map 1:1 with dark-mode roles, so any rule that goes
+ * through a token (--bg-*, --text*, --border*, --accent*, etc.) gets
+ * theming for free. A handful of selector-level overrides further down
+ * handle the few effects that bake in white/black overlays directly.
+ * =======================================================================*/
+:root[data-theme='light'] {
+  --bg-0: #ffffff;
+  --bg-1: #f5f7fb;
+  --bg-2: #eef1f7;
+  --bg-3: #e2e7f0;
+  --bg-4: #d3dae6;
+
+  --border: #d2d8e3;
+  --border-strong: #b1bac9;
+
+  --text: #14181f;
+  --text-2: #3a4253;
+  --muted: #6c7488;
+
+  --accent: #0091b8;        /* deeper cyan for contrast on light */
+  --accent-2: #1066d6;
+  --accent-warm: #b07300;
+  --accent-ink: #ffffff;
+
+  --good: #1a9c66;
+  --warn: #b76b00;
+  --bad: #cf2e54;
+
+  --shadow-1: 0 1px 2px rgba(20, 24, 31, 0.08),
+              inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --shadow-2: 0 8px 24px rgba(20, 24, 31, 0.10),
+              inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --glow-accent: 0 0 18px rgba(0, 145, 184, 0.20);
+  --glow-good: 0 0 14px rgba(26, 156, 102, 0.22);
+  --glow-bad: 0 0 14px rgba(207, 46, 84, 0.22);
+
+  --ring: 0 0 0 2px rgba(0, 145, 184, 0.45),
+          0 0 0 4px rgba(0, 145, 184, 0.12);
+
+  color-scheme: light;
+}
+
+/* Body background — replace the dark-tuned cyan/blue glows with a softer,
+ * flatter paper wash. Without this, the dark-mode overlay rules would
+ * still apply and leave a strange tint on a light surface. */
+:root[data-theme='light'] body,
+:root[data-theme='light'] #root,
+:root[data-theme='light'] html {
+  background:
+    radial-gradient(
+      1200px 600px at 70% -10%,
+      rgba(0, 145, 184, 0.05),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 500px at -10% 110%,
+      rgba(16, 102, 214, 0.04),
+      transparent 60%
+    ),
+    var(--bg-1);
+}
+
+/* Selection highlight — needs a darker tint to be visible on light bg. */
+:root[data-theme='light'] ::selection {
+  background: rgba(0, 145, 184, 0.25);
+  color: var(--text);
+}
+
+/* Button sheen overlays — the inset white lines that read as "raised" on
+ * dark surfaces become invisible on light ones. Swap to subtle inner
+ * highlight + dark base shadow that actually shows depth on paper. */
+:root[data-theme='light'] button.primary {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 1px 2px rgba(20, 24, 31, 0.12);
+}
+:root[data-theme='light'] button.primary:hover {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 1px 2px rgba(20, 24, 31, 0.16);
+}
+:root[data-theme='light'] button.danger {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.4) inset,
+    0 6px 18px rgba(207, 46, 84, 0.18),
+    0 1px 2px rgba(20, 24, 31, 0.12);
+}
+:root[data-theme='light'] button:not(.primary):not(.danger):not(.ghost) {
+  --btn-bg-hover: rgba(20, 24, 31, 0.05);
+}
+
+/* Truck Packer logo — the source PNG is white text on a black background.
+ *  - Dark mode: mix-blend-mode: screen drops the black, white text shows.
+ *  - Light mode: invert the image (black text on white bg), then multiply
+ *    so the white background drops out and dark text stays. */
+:root[data-theme='light'] .statusbar .tp-credit-logo {
+  mix-blend-mode: multiply;
+  filter: invert(1);
+  opacity: 0.85;
+}
+:root[data-theme='light'] .statusbar .tp-credit:hover .tp-credit-logo {
+  opacity: 1;
+  filter: invert(1) drop-shadow(0 0 4px rgba(20, 24, 31, 0.18));
+}
+:root[data-theme='light'] .statusbar .tp-credit:hover {
+  background: rgba(20, 24, 31, 0.05);
+}
+:root[data-theme='light'] .statusbar .tp-credit:active {
+  background: rgba(20, 24, 31, 0.08);
+}
+
+/* Cue-list zebra/hover overlays use rgba(255,255,255,…) which vanishes on
+ * white. Swap to a low-opacity black for the same subtle "row tint" feel. */
+:root[data-theme='light'] table.cues tbody tr:nth-child(even) > td {
+  background: rgba(20, 24, 31, 0.025);
+}
+:root[data-theme='light'] table.cues tbody tr:hover > td {
+  background: rgba(20, 24, 31, 0.04);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1244,9 +1371,44 @@ button.icon-btn:focus-visible {
   opacity: 0.85;
 }
 
+/* Theme toggle (sun/moon) ----------------------------------------------- */
+.statusbar .theme-toggle {
+  margin-left: auto;          /* anchors the right-hand group */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border-radius: var(--r-pill);
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    transform 120ms ease;
+}
+.statusbar .theme-toggle:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+  background: var(--bg-3);
+}
+.statusbar .theme-toggle:active {
+  transform: translateY(0.5px);
+}
+.statusbar .theme-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
 /* "Built by Truck Packer" credit ----------------------------------------- */
 .statusbar .tp-credit {
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 8px;
