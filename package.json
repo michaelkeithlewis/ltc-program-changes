@@ -1,6 +1,6 @@
 {
   "name": "ltc-program-changes",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Standalone app that fires MIDI Program Changes from LTC timecode, targeted at Allen & Heath dLive via MIDI-over-TCP",
   "main": "out/main/index.js",
   "author": {
