@@ -5,6 +5,7 @@ import path from 'node:path'
 import { DliveClient } from './dlive'
 import { getStore } from './store'
 import { AudioService } from './ltc/audioService'
+import { initAutoUpdate } from './autoUpdate'
 import { bytesToLabel } from '../shared/midi'
 import { MidiStreamParser, messageLabel } from '../shared/midiParser'
 import type {
@@ -198,6 +199,8 @@ app.whenReady().then(() => {
   if (s.dlive.autoReconnect) dlive.connect(s.dlive)
 
   registerIpc()
+
+  initAutoUpdate(mainWindow)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

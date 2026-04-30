@@ -10,6 +10,44 @@ monitor** for debugging, plus clear **connection status detection** so you
 can verify the link to the mixer at a glance.
 
 ![status](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
+[![latest release](https://img.shields.io/github/v/release/michaelkeithlewis/ltc-program-changes?include_prereleases&sort=semver)](https://github.com/michaelkeithlewis/ltc-program-changes/releases/latest)
+
+## Download
+
+Grab the latest installer for your platform from the
+[**Releases page**](https://github.com/michaelkeithlewis/ltc-program-changes/releases/latest):
+
+| Platform | File                           |
+| -------- | ------------------------------ |
+| macOS    | `LTC Program Changes-*.dmg`    |
+| Windows  | `LTC Program Changes Setup *.exe` |
+| Linux    | `LTC Program Changes-*.AppImage`  |
+
+The app checks for updates automatically on startup and every few hours, and
+will prompt before downloading a new version.
+
+### First-launch notes
+
+**macOS** — builds are only signed + notarized when a maintainer has the
+Apple certs configured. An unsigned build will refuse to open with a message
+like *"LTC Program Changes" is damaged and can't be opened*. Fix it once
+after install with:
+
+```bash
+xattr -cr "/Applications/LTC Program Changes.app"
+```
+
+Then open it normally. macOS will remember the decision.
+
+**Windows** — an unsigned build triggers a SmartScreen warning. Click
+**More info → Run anyway**.
+
+**Linux** — make the AppImage executable, then run it:
+
+```bash
+chmod +x LTC\ Program\ Changes-*.AppImage
+./LTC\ Program\ Changes-*.AppImage
+```
 
 ## Features
 
@@ -89,15 +127,33 @@ The same secrets, wired into GitHub Actions, produce signed installers
 automatically on every tagged release — see
 [`.github/workflows/release.yml`](.github/workflows/release.yml).
 
-## Releasing
+## Releasing (maintainer workflow)
 
 ```bash
 npm version patch        # or minor / major — bumps package.json + tags
-git push && git push --tags
+git push --follow-tags
 ```
 
-Pushing a `v*` tag triggers the release workflow, which builds installers
-for macOS, Windows, and Linux and attaches them to a draft GitHub Release.
+Pushing a `v*` tag triggers
+[`.github/workflows/release.yml`](.github/workflows/release.yml), which:
+
+1. Builds `.dmg` (macOS, arm64 + x64), `.exe` (Windows NSIS), and
+   `.AppImage` (Linux) on the matching runners.
+2. Collects the installers plus the `latest*.yml` metadata files that
+   `electron-updater` needs.
+3. Creates a **draft** GitHub Release with auto-generated release notes and
+   attaches everything.
+
+Review the draft on the Releases page and click **Publish release** when
+ready. Published assets become the new auto-update target for every existing
+installed copy.
+
+### Dry-run a release
+
+From the Actions tab, run the **Release** workflow manually with
+`dry_run: true`. The workflow builds installers and uploads them as workflow
+artifacts without creating or updating a Release — handy for smoke-testing a
+build before tagging.
 
 ## Audio input
 

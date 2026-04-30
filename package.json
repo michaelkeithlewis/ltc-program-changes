@@ -31,6 +31,7 @@
   "dependencies": {
     "audify": "^1.10.1",
     "electron-store": "^10.0.0",
+    "electron-updater": "^6.8.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^4.5.5"
@@ -110,6 +111,11 @@
     "linux": {
       "target": "AppImage",
       "category": "AudioVideo"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "michaelkeithlewis",
+      "repo": "ltc-program-changes"
     }
   }
 }
