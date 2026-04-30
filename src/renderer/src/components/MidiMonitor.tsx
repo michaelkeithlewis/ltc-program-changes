@@ -21,6 +21,7 @@ const NOISY_KINDS = new Set<string>(['nrpn', 'cc', 'pitchBend', 'channelPressure
 export function MidiMonitor() {
   const log = useApp((s) => s.log)
   const settings = useApp((s) => s.settings)
+  const setMonitorVisible = useApp((s) => s.setMonitorVisible)
   const [dirFilter, setDirFilter] = useState<DirFilter>('all')
   const [viewChannel, setViewChannel] = useState<number | 'all'>('all')
   const [hideNoisy, setHideNoisy] = useState(true)
@@ -53,68 +54,56 @@ export function MidiMonitor() {
   return (
     <div className="panel">
       <h2>
-        MIDI Monitor
+        <span>MIDI Monitor</span>
         <span
-          style={{
-            float: 'right',
-            textTransform: 'none',
-            letterSpacing: 0,
-            color: 'var(--muted)',
-            fontSize: 11,
-          }}
+          className="chip idle"
+          style={{ marginLeft: 4 }}
+          title={`${filtered.length} of ${log.length} log entries match the current filter`}
         >
           {filtered.length}/{log.length}
         </span>
+        <button
+          className="panel-close"
+          style={{ marginLeft: 'auto' }}
+          onClick={() => setMonitorVisible(false)}
+          title="Hide MIDI Monitor"
+          aria-label="Hide MIDI Monitor"
+        >
+          ✕
+        </button>
       </h2>
-      <div
-        style={{
-          display: 'flex',
-          gap: 6,
-          padding: '8px 16px',
-          borderBottom: '1px solid var(--border)',
-          fontSize: 11,
-          flexWrap: 'wrap',
-          alignItems: 'center',
-        }}
-      >
-        <div style={{ display: 'flex', gap: 4 }}>
+      <div className="monitor-toolbar">
+        <div className="seg" role="group" aria-label="Direction filter">
           {(['all', 'out', 'in'] as DirFilter[]).map((d) => (
             <button
               key={d}
-              className={dirFilter === d ? 'primary' : ''}
-              style={{ padding: '3px 8px', fontSize: 11 }}
+              className={dirFilter === d ? 'is-active' : ''}
               onClick={() => setDirFilter(d)}
             >
-              {d.toUpperCase()}
+              {d}
             </button>
           ))}
         </div>
-        <div style={{ color: 'var(--muted)', marginLeft: 6 }}>View ch:</div>
-        <select
-          value={viewChannel === 'all' ? 'all' : String(viewChannel)}
-          onChange={(e) =>
-            setViewChannel(
-              e.target.value === 'all' ? 'all' : parseInt(e.target.value, 10),
-            )
-          }
-          style={{ padding: '3px 8px', fontSize: 11 }}
-        >
-          <option value="all">all</option>
-          {Array.from({ length: 16 }, (_, i) => i + 1).map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        <label className="inline-field" title="Filter by MIDI channel">
+          <span className="label">Ch</span>
+          <select
+            value={viewChannel === 'all' ? 'all' : String(viewChannel)}
+            onChange={(e) =>
+              setViewChannel(
+                e.target.value === 'all' ? 'all' : parseInt(e.target.value, 10),
+              )
+            }
+          >
+            <option value="all">all</option>
+            {Array.from({ length: 16 }, (_, i) => i + 1).map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
         <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            color: 'var(--muted)',
-            marginLeft: 6,
-            cursor: 'pointer',
-          }}
+          className={`toggle-chip ${hideNoisy ? 'is-on' : ''}`}
           title="Hide NRPN / CC / pitch-bend / aftertouch traffic. dLive emits thousands of these per scene recall — hiding them keeps the monitor readable."
         >
           <input
@@ -122,27 +111,20 @@ export function MidiMonitor() {
             checked={hideNoisy}
             onChange={(e) => setHideNoisy(e.target.checked)}
           />
-          Hide NRPN/CC
+          <span>Hide noise</span>
           {hiddenCount > 0 && hideNoisy && (
-            <span style={{ color: 'var(--warn)' }}>· {hiddenCount} hidden</span>
+            <span className="count">{hiddenCount}</span>
           )}
         </label>
         {rxChannels.length > 0 && (
           <button
+            className="rx-clear"
             onClick={async () => {
               await window.api.settings.set({ rxChannels: [] })
             }}
-            style={{
-              marginLeft: 'auto',
-              padding: '3px 8px',
-              fontSize: 10,
-              color: 'var(--warn)',
-              borderColor: 'var(--warn)',
-              background: 'transparent',
-            }}
             title="Clear the incoming-channel filter"
           >
-            RX filter active · clear
+            RX filter · clear
           </button>
         )}
       </div>
@@ -155,7 +137,7 @@ export function MidiMonitor() {
         {filtered.map((e) => (
           <div key={e.id} className={`monitor-row ${e.direction}`}>
             <div className="tag">{fmtTime(e.at)}</div>
-            <div className="dir">{e.direction === 'out' ? '▶ OUT' : '◀ IN'}</div>
+            <div className="dir">{e.direction === 'out' ? '→ OUT' : '← IN'}</div>
             <div>
               {e.label}
               <span className="hex">{formatBytesHex(e.bytes)}</span>

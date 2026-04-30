@@ -4,9 +4,11 @@ import {
   buildProgramChange,
   bytesToLabel,
   formatTimecode,
+  normalizeTimecodeInput,
   parseTimecode,
   timecodeToFrames,
 } from '../../../shared/midi'
+import { applyTimecodeFormat } from '../utils/tcInput'
 import type { ProgramChangeCue } from '../../../shared/types'
 
 export function Simulator() {
@@ -139,7 +141,13 @@ export function Simulator() {
                 <input
                   className="tc-input"
                   value={running ? currentTc || tcInput : tcInput}
-                  onChange={(e) => setTcInput(e.target.value)}
+                  onChange={(e) => {
+                    applyTimecodeFormat(e.currentTarget, setTcInput, tcInput)
+                  }}
+                  onBlur={(e) =>
+                    setTcInput(normalizeTimecodeInput(e.target.value))
+                  }
+                  inputMode="numeric"
                   disabled={running}
                 />
               </div>

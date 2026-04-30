@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useApp } from './store'
 import { ConnectionPanel } from './components/ConnectionPanel'
 import { TimecodeDisplay } from './components/TimecodeDisplay'
@@ -6,7 +6,19 @@ import { CueList } from './components/CueList'
 import { MidiMonitor } from './components/MidiMonitor'
 import { Simulator } from './components/Simulator'
 import { WorkspaceBar } from './components/WorkspaceBar'
+import truckPackerLogo from './assets/truckpacker-logo.png'
 import type { AppSettings } from '../../shared/types'
+
+const TRUCK_PACKER_BASE_URL = 'https://truckpacker.com'
+
+function buildTruckPackerUrl(appVersion: string | null): string {
+  const url = new URL(TRUCK_PACKER_BASE_URL)
+  url.searchParams.set('utm_source', 'ltcpc')
+  url.searchParams.set('utm_medium', 'app')
+  url.searchParams.set('utm_campaign', 'builtby')
+  if (appVersion) url.searchParams.set('utm_content', `v${appVersion}`)
+  return url.toString()
+}
 
 export function App() {
   const {
@@ -20,7 +32,18 @@ export function App() {
     setWorkspaces,
     status,
     settings,
+    monitorVisible,
+    setMonitorVisible,
   } = useApp()
+
+  const [appVersion, setAppVersion] = useState<string | null>(null)
+  useEffect(() => {
+    void window.api.system.appVersion().then(setAppVersion)
+  }, [])
+  const truckPackerHref = useMemo(
+    () => buildTruckPackerUrl(appVersion),
+    [appVersion],
+  )
 
   useEffect(() => {
     let offStatus: (() => void) | undefined
@@ -89,16 +112,29 @@ export function App() {
   return (
     <div className="app">
       <div className="titlebar">
-        <div style={{ flex: 1 }} />
-        <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-          LTC → Program Changes · dLive Bridge
+        <div className="wordmark" title="LTC → Program Changes">
+          <span className="dot" />
+          <span>LTCpc</span>
+          <span className="sub">LTC → Program Changes · dLive Bridge</span>
         </div>
-        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', paddingRight: 10 }}>
+        <div style={{ flex: 1 }} />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingRight: 4 }}>
           <WorkspaceBar />
         </div>
       </div>
 
-      <div className="main">
+      <div
+        className="main"
+        style={
+          {
+            // Two-pane when the monitor is hidden, three-pane otherwise.
+            // Inline so it's a one-line change rather than a class swap.
+            ['--main-cols' as string]: monitorVisible
+              ? '360px 1fr 420px'
+              : '360px 1fr',
+          } as React.CSSProperties
+        }
+      >
         <div className="sidebar-stack">
           <ConnectionPanel />
           <TimecodeDisplay />
@@ -110,6 +146,7 @@ export function App() {
             gridTemplateRows: '1fr auto',
             minHeight: 0,
             overflow: 'hidden',
+            position: 'relative',
           }}
         >
           <div
@@ -123,22 +160,34 @@ export function App() {
             <CueList />
           </div>
           <Simulator />
+          {!monitorVisible && (
+            <button
+              className="monitor-show-tab"
+              onClick={() => setMonitorVisible(true)}
+              title="Show MIDI Monitor"
+              aria-label="Show MIDI Monitor"
+            >
+              ‹ MIDI
+            </button>
+          )}
         </div>
 
-        <MidiMonitor />
+        {monitorVisible && <MidiMonitor />}
       </div>
 
       <div className="statusbar">
         <span className="status-pill">
           <span className={`status-dot ${dotClass}`} />
-          dLive{' '}
-          {status.state === 'connected'
-            ? `· ${status.remote}`
-            : `· ${status.state}`}
+          <span>
+            dLive{' '}
+            {status.state === 'connected'
+              ? `· ${status.remote}`
+              : `· ${status.state}`}
+          </span>
         </span>
 
-        <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          Frame rate:
+        <label className="sb-group" title="Project frame rate (must match your LTC source)">
+          <span className="sb-label">FPS</span>
           <select
             value={settings?.frameRate ?? 30}
             onChange={(e) =>
@@ -152,20 +201,33 @@ export function App() {
           </select>
         </label>
 
-        <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          Pre-roll (ms):
+        <label className="sb-group" title="Fire each cue this many ms before its timecode">
+          <span className="sb-label">Pre-roll</span>
           <input
             type="number"
             value={settings?.preRollMs ?? 0}
             onChange={(e) => setPreRoll(parseInt(e.target.value, 10) || 0)}
-            style={{ width: 80 }}
+            style={{ width: 56 }}
           />
+          <span style={{ color: 'var(--muted)', fontSize: 10.5 }}>ms</span>
         </label>
 
-        <span style={{ marginLeft: 'auto' }}>
-          Tip: workspaces auto-save. Export from the workspace menu to back
-          them up or share.
-        </span>
+        <a
+          className="tp-credit"
+          href={truckPackerHref}
+          target="_blank"
+          rel="noopener"
+          title="Visit Truck Packer"
+          aria-label="Built by Truck Packer — open landing page"
+        >
+          <span className="tp-credit-text">Built by</span>
+          <img
+            src={truckPackerLogo}
+            alt="Truck Packer"
+            className="tp-credit-logo"
+            draggable={false}
+          />
+        </a>
       </div>
     </div>
   )

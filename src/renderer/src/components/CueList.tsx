@@ -4,9 +4,11 @@ import type { Cue } from '../../../shared/types'
 import {
   buildCueBytes,
   bytesToLabel,
+  normalizeTimecodeInput,
   parseTimecode,
   timecodeToMs,
 } from '../../../shared/midi'
+import { applyTimecodeFormat } from '../utils/tcInput'
 import { buildCueRows, type CueRuntimeState } from '../cueState'
 
 function newCue(timecode: string, channel: number): Cue {
@@ -453,11 +455,16 @@ export function CueList() {
 
   const hasLiveTc = currentMs !== null
 
-  const headerInfo = useMemo(() => {
-    const parts = [
-      `${cues.length} cue${cues.length === 1 ? '' : 's'}`,
-      `${fps} fps`,
-    ]
+  const baseInfo = useMemo(
+    () =>
+      [
+        `${cues.length} cue${cues.length === 1 ? '' : 's'}`,
+        `${fps} fps`,
+      ].join(' · '),
+    [cues.length, fps],
+  )
+  const warningInfo = useMemo(() => {
+    const parts: string[] = []
     if (view.collisionCount > 0) {
       parts.push(
         `${view.collisionCount} conflict${view.collisionCount === 1 ? '' : 's'}`,
@@ -466,8 +473,8 @@ export function CueList() {
     if (view.invalidCount > 0) {
       parts.push(`${view.invalidCount} invalid`)
     }
-    return parts.join(' · ')
-  }, [cues.length, fps, view.collisionCount, view.invalidCount])
+    return parts.length > 0 ? parts.join(' · ') : null
+  }, [view.collisionCount, view.invalidCount])
 
   return (
     <div
@@ -489,29 +496,24 @@ export function CueList() {
         minHeight: 0,
       }}
     >
-      <h2 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <h2>
         <span>Cue List</span>
-        <span
-          style={{
-            marginLeft: 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            textTransform: 'none',
-            letterSpacing: 0,
-            color: dirty
-              ? 'var(--warn)'
-              : view.collisionCount > 0
-                ? 'var(--bad)'
-                : 'var(--muted)',
-            fontSize: 11,
-          }}
-        >
-          {dirty ? 'saving…' : headerInfo}
+        <span className="chip idle" style={{ marginLeft: 4 }}>
+          {dirty ? 'Saving…' : baseInfo}
+        </span>
+        {warningInfo && !dirty && (
+          <span
+            className="chip bad"
+            title="One or more cues need attention"
+          >
+            {warningInfo}
+          </span>
+        )}
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <button
             className="primary"
             onClick={add}
-            style={{ padding: '4px 10px', fontSize: 11 }}
+            style={{ padding: '4px 12px', fontSize: 11 }}
             title={
               hasLiveTc
                 ? `Create a new cue at ${currentTc}`
@@ -523,33 +525,46 @@ export function CueList() {
           <button
             onClick={rearm}
             title="Re-arm: reset fire history for this pass and anchor here"
-            style={{ padding: '4px 10px', fontSize: 11 }}
+            style={{ padding: '4px 12px', fontSize: 11 }}
           >
             Re-arm
           </button>
         </span>
       </h2>
-      <div className="panel-body">
+      {/*
+       * Two-table layout. Sticky `<thead>` inside an overflow:auto parent
+       * proved unreliable in practice (rows would visibly bleed above the
+       * pinned header), so we render the column headers as their own
+       * non-scrolling table at the top of panel-body, and the rows as a
+       * second table inside a dedicated scroll container below it. Both
+       * tables share an identical <colgroup> (`CueColGroup`), which —
+       * combined with `table-layout: fixed` — guarantees the columns line
+       * up across the boundary regardless of cell content.
+       */}
+      <div className="panel-body cue-list-body">
+        <div className="cue-header-wrap">
+          <table className="cues">
+            <CueColGroup />
+            <thead>
+              <tr>
+                <th
+                  className="drag-handle-head"
+                  title="Drag to reorder. Shift/⌘-click to multi-select."
+                />
+                <th>State</th>
+                <th>On</th>
+                <th>Timecode</th>
+                <th>Name</th>
+                <th title="MIDI output channel (1-16)">Ch</th>
+                <th title="Program Change number (0-127)">PC #</th>
+                <th />
+              </tr>
+            </thead>
+          </table>
+        </div>
+        <div className="cue-scroll">
         <table className="cues">
-          <thead>
-            <tr>
-              <th
-                className="drag-handle-head"
-                title="Drag to reorder. Shift/⌘-click to multi-select."
-              ></th>
-              <th style={{ width: 68 }}>State</th>
-              <th style={{ width: 36 }}>On</th>
-              <th style={{ width: 140 }}>Timecode</th>
-              <th>Name</th>
-              <th style={{ width: 72 }} title="MIDI output channel (1-16)">
-                Ch
-              </th>
-              <th style={{ width: 80 }} title="Program Change number (0-127)">
-                PC #
-              </th>
-              <th style={{ width: 140 }}></th>
-            </tr>
-          </thead>
+          <CueColGroup />
           <tbody>
             {view.rows.length === 0 && (
               <tr>
@@ -641,9 +656,20 @@ export function CueList() {
                     >
                       <input
                         value={c.timecode}
-                        onChange={(e) =>
-                          update(c.id, { timecode: e.target.value })
-                        }
+                        onChange={(e) => {
+                          applyTimecodeFormat(
+                            e.currentTarget,
+                            (next) => update(c.id, { timecode: next }),
+                            c.timecode,
+                          )
+                        }}
+                        onBlur={(e) => {
+                          const next = normalizeTimecodeInput(e.target.value)
+                          if (next !== c.timecode) {
+                            update(c.id, { timecode: next })
+                          }
+                        }}
+                        inputMode="numeric"
                         placeholder="00:00:00:00"
                         style={{
                           fontFamily: 'ui-monospace, monospace',
@@ -720,8 +746,35 @@ export function CueList() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Shared column-width definition for both the cue list's header table and
+ * its body table. Keeping these in one place is what allows the headers
+ * (rendered above the scroll viewport) to line up perfectly with the
+ * scrolling rows below. Widths total ~440px of fixed columns, with the
+ * Name column flexing to fill the rest.
+ */
+function CueColGroup() {
+  return (
+    <colgroup>
+      <col style={{ width: 22 }} />
+      <col style={{ width: 68 }} />
+      <col style={{ width: 36 }} />
+      {/* Timecode column needs ~160px: 11 monospace chars (00:00:00:00) +
+       * 8px input padding × 2 + ~28px capture button + 4px gap + 20px td
+       * padding. At 140 the last frame digit was clipped under horizontal
+       * scroll. */}
+      <col style={{ width: 160 }} />
+      <col />
+      <col style={{ width: 72 }} />
+      <col style={{ width: 80 }} />
+      <col style={{ width: 124 }} />
+    </colgroup>
   )
 }
 

@@ -183,22 +183,27 @@ export function TimecodeDisplay() {
 
   return (
     <div className="panel">
-      <h2 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <h2>
         <span>Timecode (LTC)</span>
         <span
-          style={{
-            marginLeft: 'auto',
-            textTransform: 'none',
-            letterSpacing: 0,
-            color: 'var(--muted)',
-            fontSize: 11,
-          }}
+          className={`chip ${
+            listening ? 'live' : refreshing ? 'warn' : 'idle'
+          }`}
+          style={{ marginLeft: 'auto' }}
         >
-          {listening
-            ? `Decoding · ${status?.sampleRate ?? 0} Hz`
-            : refreshing
-              ? 'Scanning…'
-              : 'Idle'}
+          {listening ? (
+            <>
+              <span
+                className="status-dot connected"
+                style={{ width: 6, height: 6 }}
+              />
+              {(status?.sampleRate ?? 0) / 1000}k
+            </>
+          ) : refreshing ? (
+            'Scanning'
+          ) : (
+            'Idle'
+          )}
         </span>
       </h2>
       <div className="panel-body">
@@ -266,16 +271,7 @@ export function TimecodeDisplay() {
             </span>
           </label>
           {selected && selected.inputChannels === 1 ? (
-            <div
-              style={{
-                padding: '8px 10px',
-                borderRadius: 6,
-                background: 'var(--bg)',
-                border: '1px solid var(--border)',
-                color: 'var(--muted)',
-                fontSize: 12,
-              }}
-            >
+            <div className="note-card" style={{ marginTop: 0 }}>
               This device exposes a single mono input — nothing to pick.
             </div>
           ) : (
@@ -294,11 +290,6 @@ export function TimecodeDisplay() {
                 )}
             </select>
           )}
-          <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 6 }}>
-            Native multi-channel capture via CoreAudio/ASIO — supports any
-            number of inputs (Dante, MADI, aggregates, etc.). Saved per
-            workspace.
-          </div>
         </div>
 
         <div

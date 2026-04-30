@@ -29,6 +29,11 @@ interface AppState {
   lastFiredCueId: string | null
   /** id → epoch-ms of when this cue was fired in the current pass. */
   firedCueIds: Record<string, number>
+  /**
+   * Whether the right-hand MIDI Monitor pane is shown. Persisted to
+   * localStorage so the user's choice survives reloads. Default: visible.
+   */
+  monitorVisible: boolean
 
   setSettings: (s: AppSettings) => void
   setCues: (c: Cue[]) => void
@@ -47,6 +52,25 @@ interface AppState {
   clearFiredHistory: () => void
   /** Manually set the pass anchor (normally managed automatically). */
   setTcAnchor: (ms: number | null) => void
+  setMonitorVisible: (v: boolean) => void
+}
+
+const MONITOR_VISIBLE_KEY = 'ui.monitorVisible'
+function readMonitorVisible(): boolean {
+  if (typeof window === 'undefined') return true
+  try {
+    const raw = window.localStorage.getItem(MONITOR_VISIBLE_KEY)
+    return raw === null ? true : raw === '1'
+  } catch {
+    return true
+  }
+}
+function writeMonitorVisible(v: boolean) {
+  try {
+    window.localStorage.setItem(MONITOR_VISIBLE_KEY, v ? '1' : '0')
+  } catch {
+    // localStorage may be disabled / quota exceeded — non-fatal.
+  }
 }
 
 export const useApp = create<AppState>((set) => ({
@@ -62,6 +86,7 @@ export const useApp = create<AppState>((set) => ({
   tcAnchorMs: null,
   lastFiredCueId: null,
   firedCueIds: {},
+  monitorVisible: readMonitorVisible(),
 
   setSettings: (s) => set({ settings: s }),
   setCues: (c) => set({ cues: c }),
@@ -97,4 +122,8 @@ export const useApp = create<AppState>((set) => ({
   clearFiredHistory: () =>
     set({ lastFiredCueId: null, firedCueIds: {} }),
   setTcAnchor: (ms) => set({ tcAnchorMs: ms }),
+  setMonitorVisible: (v) => {
+    writeMonitorVisible(v)
+    set({ monitorVisible: v })
+  },
 }))

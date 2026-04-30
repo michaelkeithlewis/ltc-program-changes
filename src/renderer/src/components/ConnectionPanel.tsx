@@ -130,18 +130,6 @@ export function ConnectionPanel() {
                 </option>
               )}
           </select>
-          <div
-            style={{
-              marginTop: 4,
-              fontSize: 11,
-              color: 'var(--muted)',
-              lineHeight: 1.4,
-            }}
-          >
-            Pin which network interface the control session goes out on.
-            Useful when this machine has both Wi-Fi and a wired NIC on the
-            dLive control VLAN.
-          </div>
         </div>
         <label
           style={{
@@ -170,23 +158,6 @@ export function ConnectionPanel() {
           </button>
         </div>
 
-        <div
-          style={{
-            marginTop: 20,
-            padding: 10,
-            borderRadius: 6,
-            background: 'var(--bg-3)',
-            fontSize: 12,
-            color: 'var(--muted)',
-            lineHeight: 1.5,
-          }}
-        >
-          <strong style={{ color: 'var(--text)' }}>dLive setup:</strong>
-          <br />
-          In Director / Surface, enable Network MIDI under Utility → Control →
-          MIDI, and route MIDI to the relevant Scenes / Softkeys. The
-          factory-default TCP port is <code>51325</code>.
-        </div>
       </div>
     </div>
   )

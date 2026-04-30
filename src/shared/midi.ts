@@ -107,6 +107,55 @@ export function formatTimecode(tc: Timecode): string {
   return `${pad(tc.hours)}:${pad(tc.minutes)}:${pad(tc.seconds)}${sep}${pad(tc.frames)}`
 }
 
+/**
+ * Live auto-formatter for timecode entry. Designed to be invoked from a
+ * controlled-input `onChange` handler so the value the user sees stays in
+ * lockstep with their typing.
+ *
+ * Behaviour:
+ * - Strips any non-digit characters (colons, semicolons, letters, etc.) and
+ *   then re-inserts a `:` after every two digits. So `12345678` becomes
+ *   `12:34:56:78` and the user can keep typing past a "full" segment — the
+ *   extra digit auto-flows into the next field rather than getting silently
+ *   eaten by a per-segment clamp.
+ * - Capped at 8 digits / 4 segments. Anything past `FF` is dropped.
+ *
+ * Note: this means pasting a partial value like `1:23:45:00` will be
+ * re-grouped as `12:34:50:0` rather than treating the colons as canonical.
+ * Pasting a fully-padded value (`01:23:45:00`) round-trips correctly. The
+ * trade-off favours smooth left-to-right typing over honouring partial
+ * colon hints in pastes, which testing showed was the right priority.
+ *
+ * Use `normalizeTimecodeInput` on blur to pad short segments to two digits
+ * and back-fill missing fields with `00`.
+ */
+export function autoFormatTimecodeInput(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 8)
+  if (digits.length === 0) return ''
+  const groups: string[] = []
+  for (let i = 0; i < digits.length; i += 2) {
+    groups.push(digits.slice(i, i + 2))
+  }
+  return groups.join(':')
+}
+
+/**
+ * Final pass for timecode input (call from `onBlur`). Pads each segment to
+ * two digits and back-fills missing trailing segments with `00`, so a
+ * partial entry like `12:34` becomes the full `12:34:00:00`. Returns the
+ * empty string if the input contains no digits at all (lets the user clear
+ * a cue's TC by emptying the field).
+ */
+export function normalizeTimecodeInput(raw: string): string {
+  const formatted = autoFormatTimecodeInput(raw)
+  if (!formatted) return ''
+  const dropFrame = raw.includes(';')
+  const parts = formatted.split(/[:;]/).map((p) => p.padStart(2, '0'))
+  while (parts.length < 4) parts.push('00')
+  const sep = dropFrame ? ';' : ':'
+  return `${parts[0]}:${parts[1]}:${parts[2]}${sep}${parts[3]}`
+}
+
 export function timecodeToFrames(tc: Timecode, fps: number): number {
   // Simple non-drop-frame calc for scheduling comparisons.
   const f = Math.round(fps)
