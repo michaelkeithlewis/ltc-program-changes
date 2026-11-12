@@ -4,8 +4,10 @@ import type { Cue } from '../../../shared/types'
 import {
   buildCueBytes,
   bytesToLabel,
+  cueToScene,
   normalizeTimecodeInput,
   parseTimecode,
+  sceneToPcFields,
   timecodeToMs,
 } from '../../../shared/midi'
 import { applyTimecodeFormat } from '../utils/tcInput'
@@ -19,7 +21,7 @@ function newCue(timecode: string, channel: number): Cue {
     timecode,
     enabled: true,
     channel,
-    program: 0,
+    ...sceneToPcFields(1),
   }
 }
 
@@ -556,7 +558,7 @@ export function CueList() {
                 <th>Timecode</th>
                 <th>Name</th>
                 <th title="MIDI output channel (1-16)">Ch</th>
-                <th title="Program Change number (0-127)">PC #</th>
+                <th title="dLive scene number (1-500). Sends Bank Select CC0 + Program Change.">Scene</th>
                 <th />
               </tr>
             </thead>
@@ -714,15 +716,16 @@ export function CueList() {
                   <td>
                     <input
                       type="number"
-                      min={0}
-                      max={127}
-                      value={c.program}
+                      min={1}
+                      max={500}
+                      value={cueToScene(c)}
                       onChange={(e) =>
                         update(c.id, {
-                          program: parseInt(e.target.value, 10) || 0,
+                          ...sceneToPcFields(parseInt(e.target.value, 10)),
+                          bankLsb: undefined,
                         })
                       }
-                      title="Program Change number (0-127). On dLive this is the scene number minus one (scene 1 = PC 0)."
+                      title={`dLive scene (1-500). Sends ${bytesToLabel(buildCueBytes(c))}`}
                     />
                   </td>
                   <td className="cue-actions">

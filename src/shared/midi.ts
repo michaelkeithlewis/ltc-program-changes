@@ -26,24 +26,29 @@ export function buildCueBytes(cue: Cue): number[] {
 
 /**
  * Convert an Allen & Heath dLive **scene number** (1..500) to its MIDI
- * representation: Bank Select MSB = 0, Bank Select LSB = floor((s-1)/128),
- * Program Change = (s-1) % 128. Useful if a production already thinks in
- * scene numbers; consumer can inline these three fields into a cue.
+ * representation per the dLive MIDI protocol: Bank Select CC0 =
+ * floor((s-1)/128), then Program Change = (s-1) % 128. Scene 129 is
+ * CC0=1 + PC 0.
  */
 export function sceneToPcFields(scene: number): {
-  channelHint: never | undefined
   bankMsb: number
-  bankLsb: number
   program: number
 } {
-  const s = Math.max(1, Math.min(500, Math.floor(scene)))
+  const s = clampScene(scene)
   const idx = s - 1
   return {
-    channelHint: undefined as never | undefined,
-    bankMsb: 0,
-    bankLsb: Math.floor(idx / 128) & 0x7f,
+    bankMsb: Math.floor(idx / 128) & 0x7f,
     program: idx % 128,
   }
+}
+
+/** dLive scene number a cue recalls. Cues without a bank are bank 0. */
+export function cueToScene(cue: Pick<Cue, 'program' | 'bankMsb'>): number {
+  return (cue.bankMsb ?? 0) * 128 + (cue.program & 0x7f) + 1
+}
+
+export function clampScene(scene: number): number {
+  return Math.max(1, Math.min(500, Math.floor(scene) || 1))
 }
 
 export function bytesToLabel(bytes: number[]): string {

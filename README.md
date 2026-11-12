@@ -51,8 +51,8 @@ chmod +x LTC\ Program\ Changes-*.AppImage
   24 / 25 / 29.97 / 30 fps SMPTE LTC. Bypasses the browser's WebRTC stack,
   so interfaces like Dante Virtual Soundcard expose all their channels
   (up to 64 in / 64 out).
-- **Cue list** — `HH:MM:SS:FF` → MIDI Program Change (or full dLive Scene
-  Recall: Bank MSB + Bank LSB + PC). Auto-persisted.
+- **Cue list** — `HH:MM:SS:FF` → dLive Scene Recall (1-500, Bank Select
+  CC0 + Program Change). Auto-persisted.
 - **dLive TCP client** — connects to the dLive MIDI bridge with auto-reconnect
   and a light-weight Active Sensing heartbeat so the connection indicator is
   trustworthy.
@@ -164,13 +164,17 @@ level meter next to the device selector shows signal presence.
 
 ## Cue types
 
-| Type               | Bytes emitted                                                      |
-| ------------------ | ------------------------------------------------------------------ |
-| **dLive Scene**    | `B0 00 00` (Bank MSB=0) `B0 20 <lsb>` (Bank LSB) `C0 <pc>` (PC)    |
-| **Program Change** | Optional `B0 00 <msb>` / `B0 20 <lsb>`, then `C0 <pc>`             |
+Each cue recalls a dLive **scene** (1..500). The app sends Bank Select CC0
+then a Program Change, per A&H's dLive MIDI protocol:
 
-The dLive scene mapping follows A&H's spec: scene number `N` (1..500) maps to
-`Bank LSB = floor((N-1)/128)` and `Program = (N-1) % 128`.
+| Scenes   | Bytes emitted        |
+| -------- | -------------------- |
+| 1-128    | `B0 00 00` `C0 <pc>` |
+| 129-256  | `B0 00 01` `C0 <pc>` |
+| 257-384  | `B0 00 02` `C0 <pc>` |
+| 385-500  | `B0 00 03` `C0 <pc>` |
+
+`<pc>` is `(scene - 1) % 128`, so Scene 129 is `B0 00 01 C0 00`.
 
 ## Architecture
 

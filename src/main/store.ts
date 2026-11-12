@@ -359,11 +359,24 @@ function migrateLegacyCue(raw: Cue | LegacySceneCue): Cue {
       enabled: sc.enabled,
       channel: sc.channel,
       program: idx % 128,
-      bankMsb: 0,
-      bankLsb: Math.floor(idx / 128) & 0x7f,
+      bankMsb: Math.floor(idx / 128) & 0x7f,
     }
   }
   const c = raw as Cue
+  // 0.2.6 and earlier migrated dLive scenes with the bank on CC32 (LSB) and
+  // CC0 pinned to 0. dLive reads the bank from CC0, so move it there.
+  if (c.bankMsb === 0 && c.bankLsb !== undefined) {
+    return {
+      id: c.id,
+      type: 'programChange',
+      name: c.name,
+      timecode: c.timecode,
+      enabled: c.enabled,
+      channel: c.channel,
+      program: typeof c.program === 'number' ? c.program : 0,
+      bankMsb: c.bankLsb,
+    }
+  }
   return {
     id: c.id,
     type: 'programChange',

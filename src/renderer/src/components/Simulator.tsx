@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../store'
 import {
   buildProgramChange,
+  clampScene,
   bytesToLabel,
   formatTimecode,
   normalizeTimecodeInput,
   parseTimecode,
+  sceneToPcFields,
   timecodeToFrames,
 } from '../../../shared/midi'
 import { applyTimecodeFormat } from '../utils/tcInput'
@@ -70,17 +72,17 @@ export function Simulator() {
   }
 
   const [testCh, setTestCh] = useState(1)
-  const [testProgram, setTestProgram] = useState(0)
+  const [testScene, setTestScene] = useState(1)
 
   async function fireTestPC() {
     const cue: ProgramChangeCue = {
       id: 'test',
       type: 'programChange',
-      name: `Test PC ${testProgram}`,
+      name: `Test scene ${testScene}`,
       timecode: '',
       enabled: true,
       channel: testCh,
-      program: testProgram,
+      ...sceneToPcFields(testScene),
     }
     const bytes = buildProgramChange(cue)
     await window.api.dlive.sendBytes(bytes, `[test] ${bytesToLabel(bytes)}`)
@@ -192,27 +194,27 @@ export function Simulator() {
                 </label>
                 <label style={{ flex: 1 }}>
                   <div style={{ fontSize: 10, color: 'var(--muted)' }}>
-                    PC #
+                    Scene
                   </div>
                   <input
                     type="number"
-                    min={0}
-                    max={127}
-                    value={testProgram}
+                    min={1}
+                    max={500}
+                    value={testScene}
                     onChange={(e) =>
-                      setTestProgram(parseInt(e.target.value, 10) || 0)
+                      setTestScene(clampScene(parseInt(e.target.value, 10)))
                     }
                   />
                 </label>
               </div>
               <button className="primary" onClick={fireTestPC}>
-                Fire Program Change
+                Recall Scene
               </button>
               <div
                 style={{ marginTop: 8, color: 'var(--muted)', fontSize: 11 }}
               >
-                Sends a MIDI PC to the dLive right now, bypassing cues.
-                PC = scene number − 1 (scene 1 → PC 0).
+                Recalls the scene on the dLive right now, bypassing cues.
+                Sends Bank Select CC0 + Program Change.
               </div>
             </div>
           </div>
